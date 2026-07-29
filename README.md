@@ -118,6 +118,32 @@ https://fireless-war-backend.onrender.com/status
 
 ---
 
+## Part C. 測試新的 `/round` API(讀取回合資料)
+
+本機啟動伺服器後(`python3 app.py`),瀏覽器打開:
+
+```
+http://127.0.0.1:5001/round?day=1st&type=Morning
+```
+
+會回傳 `1stDayMorning` 頁籤 A3:J8 的資料,格式類似:
+
+```json
+{
+  "day": "1st",
+  "type": "morning",
+  "data": [
+    {"角色": "鬼原響介", "代表組織": "鬼原一家", "正當事業": "6", ...}
+  ]
+}
+```
+
+如果 `day` 或 `type` 打錯(例如 `day=8th`),會回傳 400 錯誤,並附上清楚的錯誤訊息告訴你合法值有哪些。
+
+> 注意:目前 `config.py` 裡的 `SPREADSHEET_ID` 還是指向範例測試檔案,不是正式檔案,所以這裡讀到的資料是範例檔案裡 `1stDayMorning` 頁籤的內容(如果那個頁籤還沒建立或是空的,會回傳錯誤,這是正常的,先確認 API 邏輯本身沒問題即可)。
+
+---
+
 ## 關於 `gunicorn app:app` 這個指令(補充,不影響操作)
 
 `app.py` 是本機測試用的簡易啟動方式,正式上線環境會用 `gunicorn`(一個更穩定、能處理多個請求的伺服器程式)。`app:app` 的意思是「去 `app.py` 這個檔案裡,找一個叫做 `app` 的 Flask 物件來啟動」。這行你不用背,照抄設定即可。

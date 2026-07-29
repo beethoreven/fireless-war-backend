@@ -3,9 +3,39 @@
 Stage 1 最小可行版本:先確保伺服器活著、能回應 200
 """
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
+
+import parse_data
 
 app = Flask(__name__)
+app.json.ensure_ascii = False
+
+
+@app.route("/round", methods=["GET"])
+def round_status():
+    """
+    讀取指定回合的角色狀態表。
+    範例:GET /round?day=1st&type=Morning
+    """
+    day = request.args.get("day")
+    type_ = request.args.get("type")
+
+    if not day or not type_:
+        return jsonify({"error": "缺少必要參數 day 或 type"}), 400
+
+    try:
+        data = parse_data.parse_round_status(day, type_)
+    except ValueError as e:
+        # 參數不合法(例如 day 打錯字、type 拼錯),回傳 400 讓呼叫端知道是自己傳錯
+        return jsonify({"error": str(e)}), 400
+    except NotImplementedError as e:
+        # 這個回合類型的解析邏輯還沒做完(目前是一般 Report 頁籤),明確回 501
+        return jsonify({"error": str(e)}), 501
+    except Exception as e:
+        # 其他非預期錯誤(例如 Sheet 連線失敗、頁籤不存在),回傳 500
+        return jsonify({"error": f"讀取資料時發生錯誤:{str(e)}"}), 500
+
+    return jsonify({"day": day, "type": type_, "data": data}), 200
 
 
 @app.route("/status", methods=["GET"])
