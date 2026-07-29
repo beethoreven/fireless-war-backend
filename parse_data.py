@@ -9,11 +9,11 @@
 import config
 import sheet_access
 
-# 適用於「Morning 型態」頁籤的欄位對應(1stDayMorning ~ 7thDayMorning,以及 FinalDayResult)
+# 適用於「Morning 型態」頁籤的資料格式(1stDayMorning ~ 7thDayMorning,以及 FinalDayResult)
 # 這幾種頁籤共通點:H欄是空白分隔欄,I=持有金錢,J=當前積分
-# 注意:一般的 XthDayReport 頁籤欄位意義不同(H欄是「應得收入」,不是空白),
-#      不能套用這份定義,詳見 REPORT_COLUMNS 的說明
-MORNING_COLUMNS = [
+# 注意:一般的 XthDayReport 頁籤資料格式不同(H欄是「應得收入」,不是空白),
+#      不能套用這份定義,詳見 REPORT_FORMAT 的說明
+MORNING_FORMAT = [
     "角色",
     "代表組織",
     "正當事業",
@@ -26,13 +26,13 @@ MORNING_COLUMNS = [
     "當前積分",
 ]
 
-# 一般 Report 頁籤(1stDayReport ~ 7thDayReport)的欄位對應
+# 一般 Report 頁籤(1stDayReport ~ 7thDayReport)的資料格式
 # 依交接文件描述:C~G=注資後新等級,H=應得收入,I=應持金錢,J=預期積分
 # 已用 1stDayReport 實際資料驗證過(積分較 Morning 上升,符合注資後成長的預期)
-# 注意:I/J 欄用字刻意跟 MORNING_COLUMNS 不同——
+# 注意:I/J 欄用字刻意跟 MORNING_FORMAT 不同——
 #      Report 的「應持金錢」「預期積分」是估算值,語意上跟 Morning 的
 #      「持有金錢」「當前積分」(已確定的當下數字)不一樣,不能混用同一套詞彙
-REPORT_COLUMNS = [
+REPORT_FORMAT = [
     "角色",
     "代表組織",
     "正當事業",
@@ -72,7 +72,7 @@ def _resolve_sheet_name(day: str, type: str):
     決定要去讀 Google Sheet 的哪個頁籤。
     大部分回合遵循 {day}Day{type} 規則(例如 1st + Morning -> "1stDayMorning");
     Final 是例外——頁籤名稱固定是 "FinalDayResult",不是 "FinalDayReport",
-    這是刻意的命名區隔,避免跟一般 Report 頁籤的欄位格式(有應得收入等計算欄位)搞混,
+    這是刻意的命名區隔,避免跟一般 Report 頁籤的資料格式(有應得收入等計算欄位)搞混,
     因為 Final 的資料結構其實跟 Morning 型態一樣(H欄空白)。
     """
     if day in config.DAYS_WITHOUT_MORNING:
@@ -80,15 +80,15 @@ def _resolve_sheet_name(day: str, type: str):
     return f"{day}Day{type}"
 
 
-def _resolve_columns(day: str, type: str):
+def _resolve_format(day: str, type: str):
     """
-    決定這個頁籤該用哪一套欄位定義。
-    Morning 型態的頁籤(含 FinalDayReport)用 MORNING_COLUMNS;
-    一般 Report 頁籤(1st~7th)用 REPORT_COLUMNS。
+    決定這個頁籤該用哪一種資料格式(欄位定義)。
+    Morning 型態的頁籤(含 FinalDayResult)用 MORNING_FORMAT;
+    一般 Report 頁籤(1st~7th)用 REPORT_FORMAT。
     """
     if type == "Morning" or day in config.DAYS_WITHOUT_MORNING:
-        return MORNING_COLUMNS
-    return REPORT_COLUMNS
+        return MORNING_FORMAT
+    return REPORT_FORMAT
 
 
 def parse_round_status(day: str, type: str):
@@ -107,19 +107,19 @@ def parse_round_status(day: str, type: str):
     """
     day, type = validate_round_params(day, type)
     sheet_name = _resolve_sheet_name(day, type)
-    columns = _resolve_columns(day, type)
+    format_fields = _resolve_format(day, type)
 
     rows = sheet_access.sheet_matrix_read(sheet_name, "A", "J", 4, 8)
 
     result = []
     for row in rows:
         entry = {}
-        for idx, column_name in enumerate(columns):
-            if column_name is None:
+        for idx, field_name in enumerate(format_fields):
+            if field_name is None:
                 continue
             # 保護:如果某列資料比預期短(例如末端空白被 Google API 省略),補空字串
             value = row[idx] if idx < len(row) else ""
-            entry[column_name] = value
+            entry[field_name] = value
         result.append(entry)
 
     return result

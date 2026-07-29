@@ -126,12 +126,12 @@ https://fireless-war-backend.onrender.com/status
 http://127.0.0.1:5001/round?day=1st&type=Morning
 ```
 
-會回傳 `1stDayMorning` 頁籤 A3:J8 的資料,格式類似:
+會回傳 `1stDayMorning` 頁籤 A4:J8 的資料,格式類似:
 
 ```json
 {
   "day": "1st",
-  "type": "morning",
+  "type": "Morning",
   "data": [
     {"角色": "鬼原響介", "代表組織": "鬼原一家", "正當事業": "6", ...}
   ]
