@@ -91,12 +91,15 @@ def _resolve_format(day: str, type: str):
     return REPORT_FORMAT
 
 
-def parse_round_status(day: str, type: str):
+def parse_round_status(day: str, type: str, spreadsheet_id: str = None):
     """
     讀取指定回合頁籤的角色狀態表,回傳一個 list,每個元素是一位角色的資料字典。
 
-    範例:parse_round_status("1st", "Morning")
-         會去讀 "1stDayMorning" 頁籤的 A4:J8,回傳類似:
+    spreadsheet_id: 要讀哪一場遊戲的 Sheet(通常來自 GET /record 回傳的值)。
+                    不傳則 fallback 用 config.SPREADSHEET_ID(本機測試用)。
+
+    範例:parse_round_status("1st", "Morning", "abc123...")
+         會去讀 spreadsheet_id 對應檔案的 "1stDayMorning" 頁籤 A4:J8,回傳類似:
          [
            {"角色": "鬼原響介", "代表組織": "鬼原一家", "正當事業": "8", ..., "當前積分": "123"},
            ...
@@ -109,7 +112,9 @@ def parse_round_status(day: str, type: str):
     sheet_name = _resolve_sheet_name(day, type)
     format_fields = _resolve_format(day, type)
 
-    rows = sheet_access.sheet_matrix_read(sheet_name, "A", "J", 4, 8)
+    rows = sheet_access.sheet_matrix_read(
+        sheet_name, "A", "J", 4, 8, spreadsheet_id=spreadsheet_id
+    )
 
     result = []
     for row in rows:

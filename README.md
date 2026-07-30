@@ -126,12 +126,12 @@ https://fireless-war-backend.onrender.com/status
 http://127.0.0.1:5001/round?day=1st&type=Morning
 ```
 
-會回傳 `1stDayMorning` 頁籤 A4:J8 的資料,格式類似:
+會回傳 `1stDayMorning` 頁籤 A3:J8 的資料,格式類似:
 
 ```json
 {
   "day": "1st",
-  "type": "Morning",
+  "type": "morning",
   "data": [
     {"角色": "鬼原響介", "代表組織": "鬼原一家", "正當事業": "6", ...}
   ]
@@ -141,6 +141,71 @@ http://127.0.0.1:5001/round?day=1st&type=Morning
 如果 `day` 或 `type` 打錯(例如 `day=8th`),會回傳 400 錯誤,並附上清楚的錯誤訊息告訴你合法值有哪些。
 
 > 注意:目前 `config.py` 裡的 `SPREADSHEET_ID` 還是指向範例測試檔案,不是正式檔案,所以這裡讀到的資料是範例檔案裡 `1stDayMorning` 頁籤的內容(如果那個頁籤還沒建立或是空的,會回傳錯誤,這是正常的,先確認 API 邏輯本身沒問題即可)。
+
+---
+
+## Part D. 場次檔案的建立與查詢:`/record`
+
+`/round` 讀的是「某一場遊戲」的 Sheet,但每場遊戲要先有一份對應的 Sheet 檔案才能讀。`/record` 就是負責「這場遊戲的檔案在哪」這件事:主持人輸入日期時間,`GET /record` 查有沒有現成的檔案,沒有的話再打 `POST /record` 建立一份新的(複製自 Template)。
+
+### 為什麼建立檔案這個動作要繞一圈用 Apps Script
+
+一開始的想法是後端直接呼叫 Google Drive API 複製 Template,但實際測試後發現兩條路都走不通:
+
+- 用讀寫 `sheet_access.py` 那組 **Service Account** 身分直接複製,會報 `storageQuotaExceeded`——Service Account 沒有自己的 Drive 儲存額度,無法擁有新建立的檔案,這是 Google 對這種身分類型的結構性限制,不是權限設定能調的。
+- 改用 **OAuth(代表真人帳號)+ Google Picker** 這條路,理論上能繞開額度問題,但實測下來,Picker 選取既有檔案後的授權登記一直沒有生效(`files.get` 對已選取的檔案持續回 404),原因不明,排查多輪後放棄。
+
+最後採用的方案:寫一支 **Apps Script**,部署成 Web App,讓 Flask 用 HTTP 請求呼叫它。Apps Script 執行時用的是你自己 Google 帳號的完整權限,不受上述兩個限制影響,`DriveApp.makeCopy()` 是 Google 原生的複製動作,公式、格式都完整保留。
+
+程式碼在 `apps_script/Code.gs`,**這支不是 Python 檔案,不會被這個專案的 `pip install` 或 Render 部署動到**,需要另外手動部署到 Google 那邊,步驟見檔案開頭的註解。
+
+### 環境變數
+
+除了 Part B 提過的 `CREDENTIALS_PATH`(或 Render 上對應的 Secret File),還需要:
+
+| 變數名稱 | 說明 |
+|---|---|
+| `APPS_SCRIPT_URL` | 部署 `apps_script/Code.gs` 後拿到的網址,結尾是 `/exec` |
+| `APPS_SCRIPT_SECRET` | 跟 `Code.gs` 裡 `SECRET` 常數完全一致的密語,用來擋掉沒有這組密語的請求(因為 Apps Script Web App 設定成「知道連結的任何人」都能存取) |
+| `DRIVE_FOLDER_ID` | 場次檔案所在的 Drive 資料夾 ID,`GET /record` 查詢時會用到 |
+
+本機測試前記得先 `export` 這三個值,例如:
+
+```bash
+export APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycb.../exec"
+export APPS_SCRIPT_SECRET="你的密語"
+export DRIVE_FOLDER_ID="你的資料夾ID"
+```
+
+### API 用法
+
+**查詢場次檔案**(純查詢,不會建立任何東西):
+
+```
+GET /record?datetime=2026_07_01_18_30
+```
+
+- `200`:找到,回傳 `{"spreadsheet_id": "..."}`
+- `404`:查無此檔案(前端可據此詢問使用者是否要建立新場次)
+- `400`:`datetime` 格式不合法(應為 `YYYY_MM_DD_HH_MM`)
+
+**建立場次檔案**(複製 Template):
+
+```
+POST /record?datetime=2026_07_01_18_30
+```
+
+- `201`:建立成功,回傳 `{"spreadsheet_id": "..."}`
+- `500`:建立失敗(例如 Apps Script 連不上、密語不對、Drive 發生問題)
+- `400`:`datetime` 格式不合法
+
+**串接 `/round`**:拿到 `spreadsheet_id` 後,之後每次呼叫 `/round` 都要附帶這個參數,後端是無狀態設計,不會自己記住「目前是哪一場」:
+
+```
+GET /round?day=1st&type=Morning&spreadsheet_id=abc123...
+```
+
+不帶 `spreadsheet_id` 時,會 fallback 用 `config.SPREADSHEET_ID`(本機測試用的預設檔案)。
 
 ---
 
