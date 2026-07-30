@@ -51,17 +51,23 @@ def find_record(datetime_str: str):
     return drive_access.find_file_by_name(filename, config.DRIVE_FOLDER_ID)
 
 
-def create_record(datetime_str: str):
+def create_record(datetime_str: str, editor_email: str = None):
     """
-    請 Apps Script 複製 Template,建立新的場次檔案,回傳新檔案的 spreadsheet_id。
+    請 Apps Script 複製 Template,建立新的場次檔案,並把 editor_email
+    加為這份新檔案的編輯者,回傳 (spreadsheet_id, warning) tuple
+    (warning 平常是 None,詳見 drive_access.create_via_apps_script 的說明)。
 
     對應 POST /record,只負責建立,不會先檢查是否已存在
     (是否該建立的判斷,由前端在收到 GET 的 404 之後自己決定要不要打這支)。
 
     檔名怎麼組、複製哪個 Template、放進哪個資料夾,這些細節現在都由
     Apps Script 那邊自己決定(見 apps_script/Code.gs),這裡只驗證參數格式、
-    把 datetime 傳過去。Apps Script 走的是同步操作,這支函式回傳時,
-    新檔案已經確定複製完成,回傳的 spreadsheet_id 可以直接拿去用。
+    把 datetime 跟 editor_email 傳過去。Apps Script 走的是同步操作,
+    這支函式回傳時,新檔案已經確定複製完成,回傳的 spreadsheet_id
+    可以直接拿去用。
+
+    editor_email 沒傳(None)時,Apps Script 那邊只會建立檔案,
+    不會額外加編輯者。
     """
     datetime_str = validate_datetime_param(datetime_str)
-    return drive_access.create_via_apps_script(datetime_str)
+    return drive_access.create_via_apps_script(datetime_str, editor_email)

@@ -70,15 +70,21 @@ def find_file_by_name(name: str, folder_id: str):
     return files[0]["id"] if files else None
 
 
-def create_via_apps_script(datetime_str: str):
+def create_via_apps_script(datetime_str: str, editor_email: str = None):
     """
     呼叫 Apps Script Web App,用你自己的 Google 帳號身分複製 Template,
-    建立新的場次檔案,回傳新檔案的 spreadsheet_id。
+    建立新的場次檔案,並把 editor_email 加為這份新檔案的編輯者,
+    回傳 (spreadsheet_id, warning) 這個 tuple。
+    warning 平常是 None,只有在「檔案建立成功、但加編輯者失敗」時
+    才會有值(例如 editor_email 格式有誤),讓呼叫端可以決定要不要
+    提醒使用者,不會因為這種次要問題讓整個建立動作被判定失敗。
 
-    datetime_str: 場次的日期時間字串(YYYY_MM_DD_HH_MM),檔名怎麼組、
-                  要複製哪個 Template、放進哪個資料夾,這些細節都由
-                  Apps Script 那邊自己決定(見 apps_script/Code.gs),
-                  這裡只負責傳 datetime 過去、解讀回應。
+    datetime_str:  場次的日期時間字串(YYYY_MM_DD_HH_MM),檔名怎麼組、
+                   要複製哪個 Template、放進哪個資料夾,這些細節都由
+                   Apps Script 那邊自己決定(見 apps_script/Code.gs),
+                   這裡只負責傳參數過去、解讀回應。
+    editor_email:  要加為編輯者的主持人 email,沒傳(None)時 Apps Script
+                   只會建立檔案,不會額外加編輯者。
 
     兩個平台特性要注意:
       1. Apps Script 的 doPost() 沒辦法自訂真正的 HTTP 狀態碼
@@ -90,7 +96,11 @@ def create_via_apps_script(datetime_str: str):
     """
     resp = requests.post(
         config.APPS_SCRIPT_URL,
-        json={"secret": config.APPS_SCRIPT_SECRET, "datetime": datetime_str},
+        json={
+            "secret": config.APPS_SCRIPT_SECRET,
+            "datetime": datetime_str,
+            "editor_email": editor_email,
+        },
         timeout=30,
     )
     resp.raise_for_status()  # 這裡只確認有沒有連線成功,不代表業務邏輯成功
@@ -99,4 +109,4 @@ def create_via_apps_script(datetime_str: str):
     if body.get("statusCode") != 200:
         raise RuntimeError(body.get("error", "Apps Script 回傳未知錯誤"))
 
-    return body["spreadsheet_id"]
+    return body["spreadsheet_id"], body.get("warning")

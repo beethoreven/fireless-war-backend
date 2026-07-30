@@ -2,8 +2,11 @@
 願浮沉2:無火戰爭 —— 後端 API
 """
 
+from functools import wraps
+
 from flask import Flask, jsonify, request
 
+import gm
 import parse_data
 import record_data
 
@@ -11,11 +14,30 @@ app = Flask(__name__)
 app.json.ensure_ascii = False
 
 
+def require_gm_email(view_func):
+    """
+    裝飾器:檢查請求有沒有帶合法的 email 參數(白名單裡的主持人)。
+    不合法或沒帶,直接擋下回 401,不會進到實際的路由邏輯。
+
+    注意這不是真正的身分驗證,詳見 gm.py 開頭的說明。
+    """
+
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        email = request.args.get("email")
+        if not gm.is_valid_gm_email(email):
+            return jsonify({"error": "email 未提供或未授權"}), 401
+        return view_func(*args, **kwargs)
+
+    return wrapper
+
+
 @app.route("/record", methods=["GET"])
+@require_gm_email
 def get_record():
     """
     依日期時間查詢場次檔案是否存在,純查詢,不會建立任何東西。
-    範例:GET /record?datetime=2026_07_01_18_30
+    範例:GET /record?datetime=2026_07_01_18_30&email=beethoreven@gmail.com
 
     找到的 spreadsheet_id,前端要記住,之後每次呼叫 /round 都要附帶這個參數
     (後端是無狀態設計,不會自己記住「目前是哪一場」)。
@@ -23,6 +45,7 @@ def get_record():
     200 = 找到既有檔案
     404 = 查無此檔案(前端可據此詢問使用者是否要建立新場次,再打 POST /record)
     400 = datetime 格式不合法
+    401 = email 未提供或未授權
     """
     datetime_str = request.args.get("datetime")
 
@@ -45,43 +68,53 @@ def get_record():
 
 
 @app.route("/record", methods=["POST"])
+@require_gm_email
 def create_record():
     """
-    複製 Template 建立新的場次檔案。
-    範例:POST /record?datetime=2026_07_01_18_30
+    複製 Template 建立新的場次檔案,並把這位主持人的 email 加為編輯者。
+    範例:POST /record?datetime=2026_07_01_18_30&email=beethoreven@gmail.com
 
     只負責建立,不會先檢查是否已存在(是否該建立由前端決定,通常是在
     GET /record 回傳 404 之後,使用者確認要建立才會打這支)。
 
-    Drive 的 files.copy 是同步 API,回應時新檔案已確定複製完成,
+    Apps Script 是同步操作,回應時新檔案已確定複製完成,
     回傳的 spreadsheet_id 可以直接拿去用,不需要事後再打 GET 確認。
 
     201 = 建立成功
-    500 = 建立失敗(例如 Drive API 連線失敗、OAuth 憑證過期、額度問題)
+    500 = 建立失敗(例如 Apps Script 連不上、密語不對、Drive 發生問題)
     400 = datetime 格式不合法
+    401 = email 未提供或未授權
     """
     datetime_str = request.args.get("datetime")
+    email = request.args.get("email")  # 已經過 @require_gm_email 驗證,這裡一定是合法值
 
     if not datetime_str:
         return jsonify({"error": "缺少必要參數 datetime"}), 400
 
     try:
-        spreadsheet_id = record_data.create_record(datetime_str)
+        spreadsheet_id, warning = record_data.create_record(datetime_str, email)
     except ValueError as e:
         # datetime 格式不合法
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        # 其他非預期錯誤(例如 Drive API 連線失敗、OAuth 憑證過期、額度問題)
+        # 其他非預期錯誤(例如 Apps Script 連線失敗、密語不對、Drive 發生問題)
         return jsonify({"error": f"建立場次檔案時發生錯誤:{str(e)}"}), 500
 
-    return jsonify({"spreadsheet_id": spreadsheet_id}), 201
+    result = {"spreadsheet_id": spreadsheet_id}
+    if warning:
+        # 檔案本身建立成功,但加編輯者這個附加動作失敗(例如 email 格式有誤),
+        # 不影響主流程判定為成功(201),只是額外提醒一下
+        result["warning"] = warning
+
+    return jsonify(result), 201
 
 
 @app.route("/round", methods=["GET"])
+@require_gm_email
 def round_status():
     """
     讀取指定回合的角色狀態表。
-    範例:GET /round?day=1st&type=Morning&spreadsheet_id=abc123...
+    範例:GET /round?day=1st&type=Morning&spreadsheet_id=abc123...&email=beethoreven@gmail.com
 
     spreadsheet_id 通常來自 GET /record 回傳的值;不帶這個參數時,
     會 fallback 用 config.SPREADSHEET_ID(本機測試用的預設檔案)。
