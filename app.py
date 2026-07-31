@@ -5,6 +5,7 @@
 from functools import wraps
 
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 import gm
 import parse_data
@@ -12,6 +13,17 @@ import record_data
 
 app = Flask(__name__)
 app.json.ensure_ascii = False
+
+# 前端(GitHub Pages)透過瀏覽器 fetch 呼叫這裡,需要 CORS 允許來源網域。
+# 本機開發(任意 port 的 localhost/127.0.0.1)也一併放行方便測試。
+CORS(
+    app,
+    origins=[
+        "https://beethoreven.github.io",
+        r"http://localhost:\d+",
+        r"http://127\.0\.0\.1:\d+",
+    ],
+)
 
 
 def require_gm_email(view_func):
