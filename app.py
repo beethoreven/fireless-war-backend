@@ -6,6 +6,7 @@ from functools import wraps
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_limiter import Limiter
 
 import gm
 import parse_data
@@ -24,6 +25,14 @@ CORS(
         r"http://127\.0\.0\.1:\d+",
     ],
 )
+
+# /round 每次呼叫會打 1 次 Google Sheets API(已用 batchGet 合併過)。
+# Google 官方配額是「每個 Service Account 身份每分鐘 60 次讀取」,這個配額是
+# 全站共用的(不分是哪個主持人、哪一場遊戲),所以這裡刻意做成全站共用一個額度,
+# 不是分別限制每個 IP——保護的是共用的 Google 配額本身,不是防止單一使用者太活躍。
+# 30/分鐘 = Google 上限的一半,留一半安全邊際,同時遠高於正常對戰使用量
+# (一場 6 小時的遊戲預期打不到 20 次)。
+limiter = Limiter(key_func=lambda: "global", app=app, storage_uri="memory://")
 
 
 def require_gm_email(view_func):
@@ -122,6 +131,7 @@ def create_record():
 
 
 @app.route("/round", methods=["GET"])
+@limiter.limit("30 per minute")
 @require_gm_email
 def round_status():
     """
@@ -165,6 +175,11 @@ def status():
         "status": "ok",
         "message": "Fireless War backend is running"
     }), 200
+
+
+@app.errorhandler(429)
+def handle_rate_limit(e):
+    return jsonify({"error": "請求太頻繁,請稍後再試"}), 429
 
 
 if __name__ == "__main__":

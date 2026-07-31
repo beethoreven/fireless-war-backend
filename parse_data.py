@@ -125,46 +125,55 @@ def _to_int(value):
     return int(value)
 
 
-def _read_global_flags(spreadsheet_id):
-    """
-    讀取 Global_Param 頁籤的三個全域轉換開關。
-    每次呼叫都重新讀,不快取——這三個值在遊戲過程中隨時可能被主持人手動改動。
-    """
-    oniwara_out = sheet_access.sheet_read(GLOBAL_PARAM_SHEET, "B3", spreadsheet_id) == "是"
-    mike_out = sheet_access.sheet_read(GLOBAL_PARAM_SHEET, "B4", spreadsheet_id) == "是"
-    kouno_single = sheet_access.sheet_read(GLOBAL_PARAM_SHEET, "B5", spreadsheet_id) == "是"
-    return oniwara_out, mike_out, kouno_single
+def _cell_value(batch_values, idx, default=""):
+    """從 sheet_batch_read 的結果裡取出第 idx 個 range 的單一儲存格值,取不到就回傳 default。"""
+    rows = batch_values[idx]
+    if rows and rows[0]:
+        return rows[0][0]
+    return default
 
 
-def _read_business_basics(spreadsheet_id):
+def _read_round_batch(sheet_name: str, spreadsheet_id):
     """
-    讀取 OriginalStatus 頁籤的合法/非法事業基數與崩壞指數。
-    每次呼叫都重新讀(不假設它不會變——鬼怒川新助達成個人目標時,這幾個值可能被手動調整)。
+    一次讀完組一份 /round 回應需要的所有原始資料(只打一次 Google Sheets API):
+    這個回合頁籤的 A1 標題 + A4:J8 角色資料表,
+    以及 Global_Param 三個全域轉換開關、OriginalStatus 三個事業基數/崩壞指數。
+
+    這幾個值在遊戲過程中隨時可能被主持人手動改動,所以每次呼叫都重新讀,不快取;
+    但改成一次 batch 呼叫,不代表可以接受快取——只是把「重新讀」的配額成本從 8 次降到 1 次。
     """
-    legal_basic = _to_int(sheet_access.sheet_read(ORIGINAL_STATUS_SHEET, "M3", spreadsheet_id))
-    illegal_basic = _to_int(sheet_access.sheet_read(ORIGINAL_STATUS_SHEET, "M4", spreadsheet_id))
-    broken_target = _to_int(sheet_access.sheet_read(ORIGINAL_STATUS_SHEET, "M5", spreadsheet_id))
-    return legal_basic, illegal_basic, broken_target
+    ranges = [
+        f"'{sheet_name}'!A1",
+        f"'{sheet_name}'!A4:J8",
+        f"{GLOBAL_PARAM_SHEET}!B3",
+        f"{GLOBAL_PARAM_SHEET}!B4",
+        f"{GLOBAL_PARAM_SHEET}!B5",
+        f"{ORIGINAL_STATUS_SHEET}!M3",
+        f"{ORIGINAL_STATUS_SHEET}!M4",
+        f"{ORIGINAL_STATUS_SHEET}!M5",
+    ]
+    batch = sheet_access.sheet_batch_read(ranges, spreadsheet_id)
+
+    return {
+        "round_label": _cell_value(batch, 0),
+        "rows": batch[1],
+        "oniwara_out": _cell_value(batch, 2) == "是",
+        "mike_out": _cell_value(batch, 3) == "是",
+        "kouno_single": _cell_value(batch, 4) == "是",
+        "legal_basic": _to_int(_cell_value(batch, 5, "0")),
+        "illegal_basic": _to_int(_cell_value(batch, 6, "0")),
+        "broken_target": _to_int(_cell_value(batch, 7, "0")),
+    }
 
 
-def _build_business_level(day: str, type: str, spreadsheet_id, kouno_single: bool):
+def _rows_to_business_level(rows, format_fields, is_report_format: bool, kouno_single: bool):
     """
-    讀取指定回合頁籤的五位角色資料,轉換成前端要的英文 key 格式。
-    回傳 (business_level dict, round_label)。
+    把 A4:J8 讀到的原始列資料,轉換成前端要的英文 key 格式。
 
     河野麗一併入 PH-003 的積分合併規則在這裡處理:kouno_single=False 時,
     河野麗一當次的積分(current_integral 或 expected_integral,視 type 而定)設為 None,
     同一筆數字併加到 PH-003 對應欄位上;金錢欄位不受影響,永遠是本人真實數字。
     """
-    sheet_name = _resolve_sheet_name(day, type)
-    format_fields = _resolve_format(day, type)
-    is_report_format = format_fields is REPORT_FORMAT
-
-    rows = sheet_access.sheet_matrix_read(
-        sheet_name, "A", "J", 4, 8, spreadsheet_id=spreadsheet_id
-    )
-    round_label = sheet_access.sheet_read(sheet_name, "A1", spreadsheet_id)
-
     business_level = {}
     for row in rows:
         char_name = row[0] if row else ""
@@ -200,7 +209,7 @@ def _build_business_level(day: str, type: str, spreadsheet_id, kouno_single: boo
         )
         business_level["kouno"][integral_field] = None
 
-    return business_level, round_label
+    return business_level
 
 
 def _compute_business_totals(business_level, oniwara_out: bool, legal_basic: int, illegal_basic: int):
@@ -236,26 +245,28 @@ def build_round_response(day: str, type: str, spreadsheet_id: str = None):
     欄位結構跟 Morning 型態相同(H欄空白),不是一般 Report 頁籤的結構。
     """
     day, type = validate_round_params(day, type)
+    sheet_name = _resolve_sheet_name(day, type)
+    format_fields = _resolve_format(day, type)
+    is_report_format = format_fields is REPORT_FORMAT
 
-    oniwara_out, mike_out, kouno_single = _read_global_flags(spreadsheet_id)
-    legal_basic, illegal_basic, broken_target = _read_business_basics(spreadsheet_id)
+    batch = _read_round_batch(sheet_name, spreadsheet_id)
 
-    business_level, round_label = _build_business_level(
-        day, type, spreadsheet_id, kouno_single
+    business_level = _rows_to_business_level(
+        batch["rows"], format_fields, is_report_format, batch["kouno_single"]
     )
     legal_business, illegal_business = _compute_business_totals(
-        business_level, oniwara_out, legal_basic, illegal_basic
+        business_level, batch["oniwara_out"], batch["legal_basic"], batch["illegal_basic"]
     )
 
     return {
         "day": day,
         "type": type,
-        "round_label": round_label,
-        "oniwara_out": oniwara_out,
-        "mike_out": mike_out,
-        "kouno_single": kouno_single,
+        "round_label": batch["round_label"],
+        "oniwara_out": batch["oniwara_out"],
+        "mike_out": batch["mike_out"],
+        "kouno_single": batch["kouno_single"],
         "legal_business": legal_business,
         "illegal_business": illegal_business,
-        "broken_target": broken_target,
+        "broken_target": batch["broken_target"],
         "business_level": business_level,
     }

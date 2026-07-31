@@ -59,43 +59,22 @@ def _get_spreadsheet(spreadsheet_id: str = None):
     return _spreadsheet_cache[sid]
 
 
-def sheet_read(sheet_name: str, cell: str, spreadsheet_id: str = None):
+def sheet_batch_read(ranges: list, spreadsheet_id: str = None):
     """
-    讀取指定頁籤中,單一儲存格的值。
+    一次讀取多個範圍(可以跨不同頁籤),只打一次 Google Sheets API。
 
-    sheet_name:     頁籤名稱,例如 "Original_Status"
-    cell:           A1 表示法的儲存格座標,例如 "C4"
-    spreadsheet_id: 要讀哪一份 Sheet,不傳則用 config.SPREADSHEET_ID
-    """
-    spreadsheet = _get_spreadsheet(spreadsheet_id)
-    worksheet = spreadsheet.worksheet(sheet_name)
-    return worksheet.acell(cell).value
+    Google Sheets API 的配額是「每個 Service Account 身份每分鐘 60 次讀取」,
+    逐格/逐範圍分開呼叫(例如 8 個小範圍分開讀 8 次)會不必要地快速吃掉這個配額。
+    需要同時讀好幾個範圍時,一律應該用這支合併成一次呼叫。
 
-
-def sheet_matrix_read(
-    sheet_name: str,
-    start_col: str,
-    end_col: str,
-    start_row: int,
-    end_row: int,
-    spreadsheet_id: str = None,
-):
-    """
-    讀取指定頁籤中,一個矩形範圍的值,回傳二維陣列(list of list)。
-
-    sheet_name:         頁籤名稱,例如 "1stDayMorning"
-    start_col, end_col: 欄位字母,例如 "A", "J"
-    start_row, end_row: 列號(整數),例如 3, 8
-    spreadsheet_id:     要讀哪一份 Sheet,不傳則用 config.SPREADSHEET_ID
-
-    範例:sheet_matrix_read("1stDayMorning", "A", "J", 3, 8)
-         會讀取 A3:J8 這個範圍,回傳 6 列、每列最多 10 欄的資料
+    ranges: A1 表示法字串列表,可以加頁籤名稱前綴,
+            例如 ["'1stDayMorning'!A1", "Global_Param!B3"]
+    回傳:   對應每個 range 的二維陣列(values),順序跟輸入的 ranges 一致;
+            該範圍完全沒有資料時,對應位置回傳空 list。
     """
     spreadsheet = _get_spreadsheet(spreadsheet_id)
-    worksheet = spreadsheet.worksheet(sheet_name)
-
-    a1_range = f"{start_col}{start_row}:{end_col}{end_row}"
-    return worksheet.get(a1_range)
+    result = spreadsheet.values_batch_get(ranges)
+    return [value_range.get("values", []) for value_range in result.get("valueRanges", [])]
 
 
 def sheet_write(sheet_name: str, cell: str, value):
