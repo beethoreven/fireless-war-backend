@@ -8,10 +8,10 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_limiter import Limiter
 
-import auth
-import gm
-import parse_data
-import record_data
+from auth_utils import auth
+from auth_utils import gm
+from data_utils import parse_data
+from data_utils import record_data
 
 app = Flask(__name__)
 app.json.ensure_ascii = False

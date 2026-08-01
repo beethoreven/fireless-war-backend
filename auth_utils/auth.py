@@ -18,7 +18,7 @@ Google 登入驗證層。
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 
-import config
+from configs import config
 
 _google_request = google_requests.Request()
 

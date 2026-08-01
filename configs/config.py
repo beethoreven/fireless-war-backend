@@ -4,7 +4,7 @@
 部署到 Render 之後,CREDENTIALS_PATH 相關的邏輯會改成從環境變數讀取
 (因為 credentials/service_account.json 不會被推上 GitHub,Render 上不存在這個檔案路徑)。
 這裡先讓本機開發能動,等接到 Render 那步,只需要改這個檔案,
-不用去 sheet_access.py 或 parse_data.py 裡到處找字串。
+不用去 cloud_utils/sheet_access.py 或 data_utils/parse_data.py 裡到處找字串。
 """
 
 import os

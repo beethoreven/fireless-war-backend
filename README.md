@@ -140,7 +140,7 @@ http://127.0.0.1:5001/round?day=1st&type=Morning
 
 如果 `day` 或 `type` 打錯(例如 `day=8th`),會回傳 400 錯誤,並附上清楚的錯誤訊息告訴你合法值有哪些。
 
-> 注意:目前 `config.py` 裡的 `SPREADSHEET_ID` 還是指向範例測試檔案,不是正式檔案,所以這裡讀到的資料是範例檔案裡 `1stDayMorning` 頁籤的內容(如果那個頁籤還沒建立或是空的,會回傳錯誤,這是正常的,先確認 API 邏輯本身沒問題即可)。
+> 注意:目前 `configs/config.py` 裡的 `SPREADSHEET_ID` 還是指向範例測試檔案,不是正式檔案,所以這裡讀到的資料是範例檔案裡 `1stDayMorning` 頁籤的內容(如果那個頁籤還沒建立或是空的,會回傳錯誤,這是正常的,先確認 API 邏輯本身沒問題即可)。
 
 ---
 
@@ -152,7 +152,7 @@ http://127.0.0.1:5001/round?day=1st&type=Morning
 
 一開始的想法是後端直接呼叫 Google Drive API 複製 Template,但實際測試後發現兩條路都走不通:
 
-- 用讀寫 `sheet_access.py` 那組 **Service Account** 身分直接複製,會報 `storageQuotaExceeded`——Service Account 沒有自己的 Drive 儲存額度,無法擁有新建立的檔案,這是 Google 對這種身分類型的結構性限制,不是權限設定能調的。
+- 用讀寫 `cloud_utils/sheet_access.py` 那組 **Service Account** 身分直接複製,會報 `storageQuotaExceeded`——Service Account 沒有自己的 Drive 儲存額度,無法擁有新建立的檔案,這是 Google 對這種身分類型的結構性限制,不是權限設定能調的。
 - 改用 **OAuth(代表真人帳號)+ Google Picker** 這條路,理論上能繞開額度問題,但實測下來,Picker 選取既有檔案後的授權登記一直沒有生效(`files.get` 對已選取的檔案持續回 404),原因不明,排查多輪後放棄。
 
 最後採用的方案:寫一支 **Apps Script**,部署成 Web App,讓 Flask 用 HTTP 請求呼叫它。Apps Script 執行時用的是你自己 Google 帳號的完整權限,不受上述兩個限制影響,`DriveApp.makeCopy()` 是 Google 原生的複製動作,公式、格式都完整保留。

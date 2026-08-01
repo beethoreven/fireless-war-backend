@@ -6,8 +6,8 @@
 只呼叫 sheet_access.py 提供的底層函式,不直接碰 gspread。
 """
 
-import config
-import sheet_access
+from configs import config
+from cloud_utils import sheet_access
 
 # 適用於「Morning 型態」頁籤的資料格式(1stDayMorning ~ 7thDayMorning,以及 FinalDayResult)
 # 這幾種頁籤共通點:H欄是空白分隔欄,I=持有金錢,J=當前積分

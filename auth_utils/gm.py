@@ -15,7 +15,7 @@ export 設定環境變數,正式環境去 Render 後台(Dashboard → 這個服�
 email 字串就能冒充。
 """
 
-import config
+from configs import config
 
 GM_LIST = {email.strip() for email in config.GM_WHITELIST_RAW.split(",") if email.strip()}
 

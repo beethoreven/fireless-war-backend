@@ -30,8 +30,8 @@
 import requests
 from google.auth.transport.requests import AuthorizedSession
 
-import config
-import sheet_access
+from configs import config
+from cloud_utils import sheet_access
 
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 

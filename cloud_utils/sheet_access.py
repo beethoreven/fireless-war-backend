@@ -9,7 +9,7 @@
 import gspread
 from google.oauth2.service_account import Credentials
 
-import config
+from configs import config
 
 # 模組層級的連線快取。
 # _credentials / _client 只需要建立一次(驗證有網路成本,也可能踩到 API 頻率限制)。

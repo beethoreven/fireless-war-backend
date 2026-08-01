@@ -10,8 +10,8 @@ GET(只查)、POST(只建)兩支各自獨立的 API,職責單純不混在一起�
 
 import re
 
-import config
-import drive_access
+from configs import config
+from cloud_utils import drive_access
 
 # 場次檔名格式:FirelessWar_YYYY_MM_DD_HH_MM
 # datetime 參數只需要傳 "YYYY_MM_DD_HH_MM" 這段,前綴由這裡統一補上
