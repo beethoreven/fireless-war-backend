@@ -69,6 +69,9 @@ BUSINESS_KEY_MAP = {
 # 非法事業的四個類別(不含正當事業),oniwara_out 觸發時鬼原響介這四項會被排除在外
 ILLEGAL_BUSINESS_KEYS = ["finance", "sex", "drug", "arms"]
 
+# 「風頭事業」平手時的優先序(由前到後優先):毒品 > 金融(闇金)> 軍火 > 色情
+HOT_BUSINESS_PRIORITY = ["drug", "finance", "arms", "sex"]
+
 GLOBAL_PARAM_SHEET = "Global_Param"
 ORIGINAL_STATUS_SHEET = "OriginalStatus"
 
@@ -151,6 +154,7 @@ def _read_round_batch(sheet_name: str, spreadsheet_id):
         f"{ORIGINAL_STATUS_SHEET}!M3",
         f"{ORIGINAL_STATUS_SHEET}!M4",
         f"{ORIGINAL_STATUS_SHEET}!M5",
+        f"{GLOBAL_PARAM_SHEET}!B10",
     ]
     batch = sheet_access.sheet_batch_read(ranges, spreadsheet_id)
 
@@ -163,6 +167,7 @@ def _read_round_batch(sheet_name: str, spreadsheet_id):
         "legal_basic": _to_int(_cell_value(batch, 5, "0")),
         "illegal_basic": _to_int(_cell_value(batch, 6, "0")),
         "broken_target": _to_int(_cell_value(batch, 7, "0")),
+        "kiyoshiro_escape": _cell_value(batch, 8) == "是",
     }
 
 
@@ -234,6 +239,26 @@ def _compute_business_totals(business_level, oniwara_out: bool, legal_basic: int
     return legal_total, illegal_total
 
 
+def _compute_hot_business(business_level, oniwara_out: bool):
+    """
+    計算「風頭事業」:加總所有角色四項非法事業的等級(oniwara_out=True 時排除鬼原響介,
+    因為鬼原商事已經洗白,不再算非法),取加總數字最高的類別;
+    同分時依 HOT_BUSINESS_PRIORITY(毒品>金融>軍火>色情)決定顯示哪一個。
+    """
+    totals = {key: 0 for key in ILLEGAL_BUSINESS_KEYS}
+    for slug, entry in business_level.items():
+        if slug == "oniwara" and oniwara_out:
+            continue
+        for key in ILLEGAL_BUSINESS_KEYS:
+            totals[key] += entry[key]
+
+    max_value = max(totals.values())
+    for key in HOT_BUSINESS_PRIORITY:
+        if totals[key] == max_value:
+            return key
+    return None
+
+
 def build_round_response(day: str, type: str, spreadsheet_id: str = None):
     """
     組出 /round API 的完整回應內容。
@@ -257,6 +282,11 @@ def build_round_response(day: str, type: str, spreadsheet_id: str = None):
     legal_business, illegal_business = _compute_business_totals(
         business_level, batch["oniwara_out"], batch["legal_basic"], batch["illegal_basic"]
     )
+    hot_business = (
+        _compute_hot_business(business_level, batch["oniwara_out"])
+        if batch["kiyoshiro_escape"]
+        else None
+    )
 
     return {
         "day": day,
@@ -269,4 +299,6 @@ def build_round_response(day: str, type: str, spreadsheet_id: str = None):
         "illegal_business": illegal_business,
         "broken_target": batch["broken_target"],
         "business_level": business_level,
+        "kiyoshiro_escape": batch["kiyoshiro_escape"],
+        "hot_business": hot_business,
     }
