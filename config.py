@@ -52,3 +52,13 @@ RECORD_FILENAME_PREFIX = "FirelessWar_"
 
 # 場次檔案所在的 Drive 資料夾 ID(給 drive_access.find_file_by_name 搜尋用)
 DRIVE_FOLDER_ID = os.environ.get("DRIVE_FOLDER_ID")
+
+# ---- Google 登入(Google Identity Services)用的 OAuth Client ID ----
+# 這不是密鑰,是設計上就要公開嵌在前端頁面裡的識別碼,不用怕外流,
+# 所以直接寫死當預設值也沒關係(跟 SPREADSHEET_ID 一樣可以用環境變數覆蓋)。
+# 用途:驗證前端傳來的 Google ID Token 時,確認 token 的 audience
+# 真的是我們自己這個 OAuth 用戶端,不是別人專案發出來的 token。
+GOOGLE_CLIENT_ID = os.environ.get(
+    "GOOGLE_CLIENT_ID",
+    "665970888301-g3mjmlrba8aosq5j8jlkgqbukmp3u76p.apps.googleusercontent.com",
+)
