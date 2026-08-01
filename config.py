@@ -62,3 +62,12 @@ GOOGLE_CLIENT_ID = os.environ.get(
     "GOOGLE_CLIENT_ID",
     "665970888301-g3mjmlrba8aosq5j8jlkgqbukmp3u76p.apps.googleusercontent.com",
 )
+
+# ---- 主持人白名單(見 gm.py)----
+# 逗號分隔的 email 清單,例如 "a@gmail.com,b@gmail.com"。
+# 刻意不寫死任何預設值——這份清單是真實個人資料,不該進版本控制,
+# 跟 APPS_SCRIPT_SECRET 一樣只能透過環境變數設定(本機用 export,
+# 正式環境在 Render 後台的 Environment 設定)。沒設定時視為空清單,
+# 也就是沒有任何人被授權,這是刻意的安全預設值(壞掉時關閉存取,
+# 而不是不小心開放給所有人)。
+GM_WHITELIST_RAW = os.environ.get("GM_WHITELIST", "")
