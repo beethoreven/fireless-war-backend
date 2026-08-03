@@ -91,6 +91,10 @@ The approach that shipped: a **Google Apps Script**, deployed as a Web App, call
 
 **English**: Render's free tier sleeps after ~15 minutes idle; waking up (cold start) can take 30–90+ seconds. `.github/workflows/keep-alive.yml` is a GitHub Actions cron job that pings `/status` every 10 minutes to keep the service awake. GitHub Actions was chosen over an external service like UptimeRobot specifically because this repo is Public — Actions minutes are free and unlimited for public repos; on a private repo this frequency would exceed the 2000-free-minutes/month quota (GitHub bills a 1-minute minimum per run regardless of actual duration: a 10-minute interval is ≈144 runs/day ≈ 4000+ billed minutes/month).
 
+**中文**:後來發現 GitHub Actions 的 `schedule` 觸發**不保證真的照設定的頻率執行**——實測 `gh run list` 顯示,雖然設定是每 10 分鐘,實際間隔卻常常拉長到 1~4 小時以上(GitHub 官方文件本身也承認 schedule 觸發「可能因系統負載而延遲」),遠超過 Render 15 分鐘的休眠門檻,冷啟動因此還是會在遊戲進行中發生。真正解決這個問題的是前端(`fireless-war-web/script.js`)自己加的 heartbeat:只要分頁還開著,一載入就先打一次 `/status`,之後每 5 分鐘再打一次,不依賴任何外部排程器的時間精準度——只要主持人在玩,分頁就不會讓後端閒置超過 15 分鐘。GitHub Actions 的 cron 依然保留當作次要備援(還是會不定期觸發,只是不能單獨依賴它)。
+
+**English**: It later turned out GitHub Actions' `schedule` trigger **does not guarantee it actually runs at the configured frequency** — `gh run list` showed that despite the `*/10 * * * *` config, real gaps between runs often stretched to 1–4+ hours (GitHub's own docs acknowledge schedule triggers "can be delayed during periods of high load"), far exceeding Render's 15-minute sleep threshold, so cold starts could still happen mid-session. The actual fix is a heartbeat added on the frontend (`fireless-war-web/script.js`): as long as a tab is open, it pings `/status` once immediately on load and then every 5 minutes after, independent of any external scheduler's timing precision — as long as a GM is actively playing, the tab itself keeps the backend from ever seeing 15 minutes of true idle. The GitHub Actions cron is still kept as a secondary backup (it does still fire sometimes, just not reliably enough to depend on alone).
+
 ### 檔案結構 / File Layout
 
 **中文**:程式碼依職責分成四個套件,`app.py`(路由入口)留在根目錄:
