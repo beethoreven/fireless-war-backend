@@ -37,6 +37,21 @@ def _resolve_record_filename(datetime_str: str):
     return f"{config.RECORD_FILENAME_PREFIX}{datetime_str}"
 
 
+DEMO_FILENAME = f"{config.RECORD_FILENAME_PREFIX}Demo"
+
+
+def find_demo_record():
+    """
+    Demo 版本專用:直接查詢固定的 FirelessWar_Demo 場次檔案,不需要日期時間參數
+    ——demo 永遠讀同一份固定的 Sheet(必須事先手動在 Drive 資料夾裡準備好,
+    複製自同一個 Template,檔名精確是 "FirelessWar_Demo")。
+
+    找到 -> 回傳 spreadsheet_id
+    找不到 -> 回傳 None(由 app.py 那層決定要回 404)
+    """
+    return drive_access.find_file_by_name(DEMO_FILENAME, config.DRIVE_FOLDER_ID)
+
+
 def find_record(datetime_str: str):
     """
     依日期時間字串搜尋既有的場次檔案。

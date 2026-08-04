@@ -122,6 +122,29 @@ def get_record():
     return jsonify({"spreadsheet_id": spreadsheet_id}), 200
 
 
+@app.route("/demo-record", methods=["GET"])
+@require_gm_email
+def get_demo_record():
+    """
+    Demo 版本專用:直接查詢固定的 FirelessWar_Demo 場次檔案,不需要 datetime 參數。
+    範例:GET /demo-record(需帶 Authorization: Bearer <ID Token>)
+
+    200 = 找到,回傳 spreadsheet_id
+    404 = 查無 FirelessWar_Demo 這個檔案(尚未手動建立)
+    401 = 未登入或此帳號未獲授權
+    """
+    try:
+        spreadsheet_id = record_data.find_demo_record()
+    except Exception as e:
+        # 其他非預期錯誤(例如 Drive API 連線失敗、OAuth 憑證過期)
+        return jsonify({"error": f"查詢 Demo 場次檔案時發生錯誤:{str(e)}"}), 500
+
+    if spreadsheet_id is None:
+        return jsonify({"error": "查無 FirelessWar_Demo 場次檔案"}), 404
+
+    return jsonify({"spreadsheet_id": spreadsheet_id}), 200
+
+
 @app.route("/record", methods=["POST"])
 @require_gm_email
 def create_record():
