@@ -11,17 +11,15 @@ TRPG 跑團輔助工具「願浮沉2:無火戰爭」的後端 API。這份文件
 
 # 專案報告 / Project Report
 
-## 這是什麼 / What This Is
+## 中文
 
-**中文**:「願浮沉2:無火戰爭」是一個 TRPG(桌上角色扮演遊戲)的game master 輔助網站。遊戲的核心資料(五位角色的事業等級、金錢、積分等)存在 Google Sheet 裡,主持人透過網頁輸入場次的日期時間,系統會讀取(或協助建立)對應的 Sheet 檔案,並把裡面的數字整理成長條圖、總覽數據,取代主持人自己在 Sheet 裡人工核對的過程。
+### 這是什麼
 
-**English**: *Fireless War 2* is a game-master companion web app for a tabletop RPG. The game's core data (five characters' business levels, money, and integral points) lives in a Google Sheet. The GM enters a session's date/time on the web page, the system finds (or helps create) the matching Sheet file, and renders the numbers as bar charts and summary panels — replacing manual cross-referencing inside the spreadsheet.
+「願浮沉2:無火戰爭」是一個 TRPG(桌上角色扮演遊戲)的game master 輔助網站。遊戲的核心資料(五位角色的事業等級、金錢、積分等)存在 Google Sheet 裡,主持人透過網頁輸入場次的日期時間,系統會讀取(或協助建立)對應的 Sheet 檔案,並把裡面的數字整理成長條圖、總覽數據,取代主持人自己在 Sheet 裡人工核對的過程。
 
-## 系統架構 / System Architecture
+### 系統架構
 
-**中文**:整個專案是一個 git meta-repo(`fireless-war`)透過 submodule 掛載兩個獨立 repo:
-
-**English**: The whole project is a git meta-repo (`fireless-war`) that wraps two independently-deployed repos via submodules:
+整個專案是一個 git meta-repo(`fireless-war`)透過 submodule 掛載兩個獨立 repo:
 
 ```
 fireless-war/                    ← meta-repo,本機開發統一入口,本身不部署
@@ -29,25 +27,19 @@ fireless-war/                    ← meta-repo,本機開發統一入口,本身�
 └── fireless-war-web/            ← 部署到 GitHub Pages(純靜態 HTML/CSS/JS)
 ```
 
-**中文**:資料源頭是 Google Sheets(每場遊戲一份獨立檔案,複製自共用的 Template),後端用 Service Account 身分唯讀存取。前端完全是 vanilla JavaScript,沒有任何前端框架或建置流程,直接把 `.html`/`.css`/`.js` 丟給 GitHub Pages 服務。
+資料源頭是 Google Sheets(每場遊戲一份獨立檔案,複製自共用的 Template),後端用 Service Account 身分唯讀存取。前端完全是 vanilla JavaScript,沒有任何前端框架或建置流程,直接把 `.html`/`.css`/`.js` 丟給 GitHub Pages 服務。
 
-**English**: Data lives in Google Sheets (one independent file per game session, copied from a shared Template); the backend accesses it read-only via a Service Account. The frontend is plain vanilla JavaScript with no framework or build step — the `.html`/`.css`/`.js` files are served directly by GitHub Pages.
+### 後端技術棧與關鍵決策
 
-## 後端技術棧與關鍵決策 / Backend Stack & Key Decisions
+Flask + gunicorn,部署在 Render 免費方案。主要相依套件見 `requirements.txt`:`Flask`、`Flask-Cors`、`Flask-Limiter`、`gunicorn`、`gspread`、`google-auth`、`requests`。
 
-**中文**:Flask + gunicorn,部署在 Render 免費方案。主要相依套件見 `requirements.txt`:`Flask`、`Flask-Cors`、`Flask-Limiter`、`gunicorn`、`gspread`、`google-auth`、`requests`。
+#### Google Sheets 存取
 
-**English**: Flask + gunicorn, deployed on Render's free tier. Key dependencies (see `requirements.txt`): `Flask`, `Flask-Cors`, `Flask-Limiter`, `gunicorn`, `gspread`, `google-auth`, `requests`.
+用 `gspread` + Service Account 憑證唯讀存取。Google Sheets API 配額是「每個 Service Account 身份每分鐘 60 次讀取」,因此所有讀取都合併成單次 `values_batch_get` 呼叫(見 `cloud_utils/sheet_access.py`),而不是逐格分開打 API——`/round` 原本要打 8 次 API,合併後只需要 1 次。`/round` 另外掛了 Flask-Limiter 的**全站共用**(不分 IP、不分主持人)`30 次/分鐘`限制,因為要保護的是全站共用的單一 Service Account 配額,不是防止單一使用者太活躍。
 
-### Google Sheets 存取 / Google Sheets Access
+#### 建立新場次檔案:為什麼要繞一圈用 Apps Script
 
-**中文**:用 `gspread` + Service Account 憑證唯讀存取。Google Sheets API 配額是「每個 Service Account 身份每分鐘 60 次讀取」,因此所有讀取都合併成單次 `values_batch_get` 呼叫(見 `cloud_utils/sheet_access.py`),而不是逐格分開打 API——`/round` 原本要打 8 次 API,合併後只需要 1 次。`/round` 另外掛了 Flask-Limiter 的**全站共用**(不分 IP、不分主持人)`30 次/分鐘`限制,因為要保護的是全站共用的單一 Service Account 配額,不是防止單一使用者太活躍。
-
-**English**: Read-only access via `gspread` with Service Account credentials. Google's Sheets API quota is 60 reads/minute per Service Account identity, so all reads within one request are merged into a single `values_batch_get` call (see `cloud_utils/sheet_access.py`) instead of one call per cell/range — `/round` used to make 8 separate API calls per request, now just 1. `/round` also carries a Flask-Limiter rate limit of 30/minute that is **global** (not per-IP, not per-GM), because the resource being protected is the shared Service Account quota itself, not any single user's activity.
-
-### 建立新場次檔案:為什麼要繞一圈用 Apps Script / Why Creating a New Session File Goes Through Apps Script
-
-**中文**:一開始想直接用 Service Account 呼叫 Google Drive API 複製 Template,但兩條路都走不通:
+一開始想直接用 Service Account 呼叫 Google Drive API 複製 Template,但兩條路都走不通:
 1. Service Account 直接 `copy()`:報 `storageQuotaExceeded`——Service Account 沒有自己的 Drive 儲存額度,無法擁有新建立的檔案,這是 Google 對這種身分類型的結構性限制。
 2. 改用 OAuth(代表真人帳號)+ Google Picker:理論上能繞開額度問題,但實測下來,Picker 選取既有檔案後的授權登記一直沒有生效(`files.get` 持續回 404),原因不明,排查多輪後放棄。
 
@@ -55,7 +47,100 @@ fireless-war/                    ← meta-repo,本機開發統一入口,本身�
 
 **這支 Apps Script 程式碼不在這個 git repo 裡**——它只存在於 Google 自己的 Apps Script 編輯器(script.google.com),透過網頁介面編輯與部署,不會被這裡的 `pip install` 或 Render 部署動到。
 
-**English**: The first attempt was calling the Google Drive API directly with the Service Account to copy the Template, but two approaches both failed:
+#### Google 登入驗證
+
+主持人的身分驗證,原本是最陽春的「前端自己填 email、後端比對白名單」,任何人只要知道某位主持人的 email 字串就能冒充。現在改用真正的 Google 登入:前端用 Google Identity Services(GIS)取得使用者登入後的 ID Token(JWT),每次呼叫 API 都夾帶 `Authorization: Bearer <token>`;後端(`auth_utils/auth.py`)用 `google-auth` 套件驗證這個 token 的簽章、有效期限、以及 audience(確認是發給我們自己這個 OAuth Client ID,不是別人專案的 token),驗證通過後拿到「Google 保證過的」email,再比對白名單。整個流程無法被瀏覽器 devtools 繞過,因為驗證發生在後端,不是前端自己判斷要不要放行。
+
+#### 主持人白名單
+
+白名單(`auth_utils/gm.py`)從 `GM_WHITELIST` 環境變數讀取(逗號分隔的 email 清單),不寫死在程式碼裡——這份清單是真實個人資料,不該進版本控制,尤其這個 repo 是 Public。沒設定這個環境變數時,視為空清單,也就是沒有任何人被授權,這是刻意的安全預設值(壞掉時關閉存取,而不是不小心開放給所有人)。要開放給新的主持人使用,不用改程式碼、不用 push:去 Render 後台的 Environment 設定編輯這個變數即可,存檔後自動重新部署套用新值。
+
+#### 其他安全性強化
+
+- **CORS**:限制只允許 GitHub Pages 正式網域 + 本機開發的 localhost/127.0.0.1(任意 port)呼叫,並明確放行 `Authorization` header(沒有這行,瀏覽器的 CORS 預檢會擋下這個 header)。
+- **SRI(Subresource Integrity)**:前端引入的 Chart.js / chartjs-plugin-datalabels CDN script 都加了 SRI hash,防止 CDN 被竄改後注入惡意程式碼(Google Identity Services 的 script 刻意不加,因為它的內容本來就會隨時變動)。
+
+#### Render 免費方案的 Keep-Alive
+
+Render 免費方案閒置約 15 分鐘會休眠,喚醒(cold start)可能要 30~90 秒以上。用 `.github/workflows/keep-alive.yml` 這個 GitHub Actions cron,每 10 分鐘打一次 `/status`,讓服務保持清醒。選擇 GitHub Actions 而不是 UptimeRobot 之類的外部服務,是因為這個 repo 是 Public——Public repo 的 Actions 分鐘數是免費無上限的,若是 Private repo,這個頻率會超過每月 2000 分鐘的免費額度(GitHub 每次執行至少計費 1 分鐘,10 分鐘一次 ≈ 每天 144 次 ≈ 每月超過 4000 分鐘)。
+
+後來發現 GitHub Actions 的 `schedule` 觸發**不保證真的照設定的頻率執行**——實測 `gh run list` 顯示,雖然設定是每 10 分鐘,實際間隔卻常常拉長到 1~4 小時以上(GitHub 官方文件本身也承認 schedule 觸發「可能因系統負載而延遲」),遠超過 Render 15 分鐘的休眠門檻,冷啟動因此還是會在遊戲進行中發生。真正解決這個問題的是前端(`fireless-war-web/script.js`)自己加的 heartbeat:只要分頁還開著,一載入就先打一次 `/status`,之後每 5 分鐘再打一次,不依賴任何外部排程器的時間精準度——只要主持人在玩,分頁就不會讓後端閒置超過 15 分鐘。GitHub Actions 的 cron 依然保留當作次要備援(還是會不定期觸發,只是不能單獨依賴它)。
+
+#### 檔案結構
+
+程式碼依職責分成四個套件,`app.py`(路由入口)留在根目錄:
+
+```
+app.py                 路由(gunicorn 的啟動目標)
+configs/config.py       集中管理設定值與環境變數
+cloud_utils/            Google Sheet/Drive 存取層,只知道怎麼跟 API 對話,不理解資料的業務意義
+  ├── sheet_access.py    Sheet「內容層級」
+  └── drive_access.py    Drive「檔案層級」
+data_utils/              業務邏輯層,知道 A~J 欄分別代表什麼、檔名怎麼組
+  ├── parse_data.py       回合資料解析與計算
+  └── record_data.py      場次檔案查詢與建立
+auth_utils/              Google 登入驗證與主持人白名單
+  ├── auth.py             ID Token 驗證
+  └── gm.py               白名單查詢
+```
+
+### 前端技術棧與關鍵決策
+
+Vanilla JavaScript(無框架、無建置流程),`Chart.js` + `chartjs-plugin-datalabels` 畫長條圖,Google Fonts 的 Noto Sans TC 作為主字型,整站部署在 GitHub Pages(Free 方案要求 repo 是 Public 才能開啟 Pages 功能)。
+
+#### 三頁式流程
+
+1. **第一頁**:輸入日期時間 → `GET /record` 查詢對應的場次 Sheet 是否存在。找到就直接進第二頁;找不到則詢問是否要 `POST /record` 建立新場次(複製自 Template)。
+2. **第二頁**:開場介紹畫面(「為期七日」「無火戰爭」+「正式開始!」按鍵),純粹的轉場頁,不會在這裡打任何 API——按下按鍵才會去抓資料進第三頁。
+3. **第三頁**:長條圖總覽——五位角色各自的事業等級長條圖、持有金錢/積分、共同數據面板(合法/非法事業加總、風頭事業指標、崩壞警示),搭配底部的回合切換器(水平滾輪選擇器,15 個回合選項)。
+
+#### 資料視覺化邏輯
+
+每位角色的五項事業(正當事業/闇金/色情/毒品/軍火)畫成長條圖,Y軸固定 0–25。三個全域轉換開關(`oniwara_out`/`mike_out`/`kouno_single`)會改變顯示邏輯——例如 `oniwara_out=true` 時,鬼原響介的事業「洗白」,顯示名稱與計入合法/非法事業的方式都會改變。共同數據面板會即時判斷「合法事業 vs 非法事業」的差距,超過閾值顯示崩壞警示;若 `Global_Param!B10` 開關開啟,額外計算並顯示「風頭事業」(非法事業四類加總最高者,同分時毒品優先於金融、軍火、色情)。
+
+#### Google 登入 UI
+
+登入狀態只在第一頁顯示,進入第二頁後自動隱藏。session 完全不做 client-side 持久化(沒有用 localStorage/cookie 存 token)——重新整理後靠 Google Identity Services 的靜默重新登入(`prompt({auto_select:true})`)嘗試無感恢復,如果瀏覽器裡有多個 Google 帳號同時登入,Google 會要求手動選一次帳號(這是 Google 平台自身的隱私限制,無法繞過)。刻意不做本機持久化的原因:如果存了 token,主持人被從白名單移除後,舊分頁可能要等 token 真的過期才會感覺到權限被收回;不存,才能保證後端白名單一改,下次重新整理立刻生效。
+
+### 資料流程總覽
+
+主持人登入 → 輸入日期時間 → `GET /record`(帶 Bearer token)查詢場次檔案 → 找到 `spreadsheet_id` 或建立新檔案 → 進入介紹頁 → 按「正式開始!」→ `GET /round`(帶 `spreadsheet_id` + Bearer token)一次性 batch 讀取該回合所有資料 → 前端渲染長條圖與共同數據 → 之後每次用底部的回合切換器換回合,重複呼叫 `GET /round`。
+
+### 已知限制
+
+`oniwara_out`/`mike_out`/`kouno_single` 三個轉換開關、以及「城市經濟崩壞」這個最嚴重等級的警示,目前都只用合成測試資料驗證過邏輯,還沒在真實遊戲中實際觸發驗證過;`最終結算`(FinalDayResult)這個回合是否要有特殊畫面表現,尚未決定;`GET /round?spreadsheet_id=` 目前不會驗證這個 ID 是不是「合法建立過的場次檔案」,理論上帶入任意公開 Sheet ID 也會嘗試讀取。
+
+---
+
+## English
+
+### What This Is
+
+*Fireless War 2* is a game-master companion web app for a tabletop RPG. The game's core data (five characters' business levels, money, and integral points) lives in a Google Sheet. The GM enters a session's date/time on the web page, the system finds (or helps create) the matching Sheet file, and renders the numbers as bar charts and summary panels — replacing manual cross-referencing inside the spreadsheet.
+
+### System Architecture
+
+The whole project is a git meta-repo (`fireless-war`) that wraps two independently-deployed repos via submodules:
+
+```
+fireless-war/                    ← meta-repo, unified local-dev entry point, never deployed itself
+├── fireless-war-backend/        ← this repo, deployed to Render (Flask + gunicorn)
+└── fireless-war-web/            ← deployed to GitHub Pages (pure static HTML/CSS/JS)
+```
+
+Data lives in Google Sheets (one independent file per game session, copied from a shared Template); the backend accesses it read-only via a Service Account. The frontend is plain vanilla JavaScript with no framework or build step — the `.html`/`.css`/`.js` files are served directly by GitHub Pages.
+
+### Backend Stack & Key Decisions
+
+Flask + gunicorn, deployed on Render's free tier. Key dependencies (see `requirements.txt`): `Flask`, `Flask-Cors`, `Flask-Limiter`, `gunicorn`, `gspread`, `google-auth`, `requests`.
+
+#### Google Sheets Access
+
+Read-only access via `gspread` with Service Account credentials. Google's Sheets API quota is 60 reads/minute per Service Account identity, so all reads within one request are merged into a single `values_batch_get` call (see `cloud_utils/sheet_access.py`) instead of one call per cell/range — `/round` used to make 8 separate API calls per request, now just 1. `/round` also carries a Flask-Limiter rate limit of 30/minute that is **global** (not per-IP, not per-GM), because the resource being protected is the shared Service Account quota itself, not any single user's activity.
+
+#### Why Creating a New Session File Goes Through Apps Script
+
+The first attempt was calling the Google Drive API directly with the Service Account to copy the Template, but two approaches both failed:
 1. Direct Service Account `copy()`: fails with `storageQuotaExceeded` — Service Accounts have no Drive storage quota of their own and structurally cannot own newly-created files.
 2. OAuth (real user identity) + Google Picker: should sidestep the quota issue, but in testing, the authorization granted after picking an existing file never actually took effect (`files.get` kept returning 404 for the picked file) for reasons never root-caused; abandoned after multiple debugging rounds.
 
@@ -63,102 +148,68 @@ The approach that shipped: a **Google Apps Script**, deployed as a Web App, call
 
 **This Apps Script code is not part of this git repo** — it exists only inside Google's own Apps Script editor (script.google.com), edited and deployed entirely through that web interface, untouched by this repo's `pip install` or Render deploy.
 
-### Google 登入驗證 / Google Sign-In Verification
+#### Google Sign-In Verification
 
-**中文**:主持人的身分驗證,原本是最陽春的「前端自己填 email、後端比對白名單」,任何人只要知道某位主持人的 email 字串就能冒充。現在改用真正的 Google 登入:前端用 Google Identity Services(GIS)取得使用者登入後的 ID Token(JWT),每次呼叫 API 都夾帶 `Authorization: Bearer <token>`;後端(`auth_utils/auth.py`)用 `google-auth` 套件驗證這個 token 的簽章、有效期限、以及 audience(確認是發給我們自己這個 OAuth Client ID,不是別人專案的 token),驗證通過後拿到「Google 保證過的」email,再比對白名單。整個流程無法被瀏覽器 devtools 繞過,因為驗證發生在後端,不是前端自己判斷要不要放行。
+GM authentication originally worked by having the frontend self-report an email that the backend matched against a whitelist — anyone who knew a GM's email string could impersonate them. This is now real Google sign-in: the frontend uses Google Identity Services (GIS) to obtain an ID Token (JWT) after login, sent as `Authorization: Bearer <token>` on every API call. The backend (`auth_utils/auth.py`) uses the `google-auth` library to verify the token's signature, expiry, and audience (confirming it was issued for our own OAuth Client ID, not some other project's), then extracts the Google-verified email and checks it against the whitelist. This cannot be bypassed from browser devtools, since verification happens server-side, not as a frontend-decided gate.
 
-**English**: GM authentication originally worked by having the frontend self-report an email that the backend matched against a whitelist — anyone who knew a GM's email string could impersonate them. This is now real Google sign-in: the frontend uses Google Identity Services (GIS) to obtain an ID Token (JWT) after login, sent as `Authorization: Bearer <token>` on every API call. The backend (`auth_utils/auth.py`) uses the `google-auth` library to verify the token's signature, expiry, and audience (confirming it was issued for our own OAuth Client ID, not some other project's), then extracts the Google-verified email and checks it against the whitelist. This cannot be bypassed from browser devtools, since verification happens server-side, not as a frontend-decided gate.
+#### GM Whitelist
 
-### 主持人白名單 / GM Whitelist
+The whitelist (`auth_utils/gm.py`) is read from the `GM_WHITELIST` environment variable (comma-separated emails), never hardcoded — this is real personal data that shouldn't be in version control, especially since this repo is Public. When unset, it defaults to an empty list — nobody authorized — a deliberate fail-closed default. Authorizing a new GM requires no code change or push: just edit the variable in Render's dashboard, which triggers an automatic redeploy.
 
-**中文**:白名單(`auth_utils/gm.py`)從 `GM_WHITELIST` 環境變數讀取(逗號分隔的 email 清單),不寫死在程式碼裡——這份清單是真實個人資料,不該進版本控制,尤其這個 repo 是 Public。沒設定這個環境變數時,視為空清單,也就是沒有任何人被授權,這是刻意的安全預設值(壞掉時關閉存取,而不是不小心開放給所有人)。要開放給新的主持人使用,不用改程式碼、不用 push:去 Render 後台的 Environment 設定編輯這個變數即可,存檔後自動重新部署套用新值。
+#### Other Security Hardening
 
-**English**: The whitelist (`auth_utils/gm.py`) is read from the `GM_WHITELIST` environment variable (comma-separated emails), never hardcoded — this is real personal data that shouldn't be in version control, especially since this repo is Public. When unset, it defaults to an empty list — nobody authorized — a deliberate fail-closed default. Authorizing a new GM requires no code change or push: just edit the variable in Render's dashboard, which triggers an automatic redeploy.
-
-### 其他安全性強化 / Other Security Hardening
-
-**中文**:
-- **CORS**:限制只允許 GitHub Pages 正式網域 + 本機開發的 localhost/127.0.0.1(任意 port)呼叫,並明確放行 `Authorization` header(沒有這行,瀏覽器的 CORS 預檢會擋下這個 header)。
-- **SRI(Subresource Integrity)**:前端引入的 Chart.js / chartjs-plugin-datalabels CDN script 都加了 SRI hash,防止 CDN 被竄改後注入惡意程式碼(Google Identity Services 的 script 刻意不加,因為它的內容本來就會隨時變動)。
-
-**English**:
 - **CORS**: restricted to the production GitHub Pages origin plus any localhost/127.0.0.1 port for local dev, with `Authorization` explicitly allowed in preflight (without it, the browser's CORS preflight strips the header and every authenticated call fails).
 - **SRI (Subresource Integrity)**: the Chart.js / chartjs-plugin-datalabels CDN `<script>` tags carry SRI hashes to guard against a compromised CDN injecting malicious code (Google Identity Services' script deliberately has none, since its content is expected to change server-side).
 
-### Render 免費方案的 Keep-Alive / Keep-Alive for Render's Free Tier
+#### Keep-Alive for Render's Free Tier
 
-**中文**:Render 免費方案閒置約 15 分鐘會休眠,喚醒(cold start)可能要 30~90 秒以上。用 `.github/workflows/keep-alive.yml` 這個 GitHub Actions cron,每 10 分鐘打一次 `/status`,讓服務保持清醒。選擇 GitHub Actions 而不是 UptimeRobot 之類的外部服務,是因為這個 repo 是 Public——Public repo 的 Actions 分鐘數是免費無上限的,若是 Private repo,這個頻率會超過每月 2000 分鐘的免費額度(GitHub 每次執行至少計費 1 分鐘,10 分鐘一次 ≈ 每天 144 次 ≈ 每月超過 4000 分鐘)。
+Render's free tier sleeps after ~15 minutes idle; waking up (cold start) can take 30–90+ seconds. `.github/workflows/keep-alive.yml` is a GitHub Actions cron job that pings `/status` every 10 minutes to keep the service awake. GitHub Actions was chosen over an external service like UptimeRobot specifically because this repo is Public — Actions minutes are free and unlimited for public repos; on a private repo this frequency would exceed the 2000-free-minutes/month quota (GitHub bills a 1-minute minimum per run regardless of actual duration: a 10-minute interval is ≈144 runs/day ≈ 4000+ billed minutes/month).
 
-**English**: Render's free tier sleeps after ~15 minutes idle; waking up (cold start) can take 30–90+ seconds. `.github/workflows/keep-alive.yml` is a GitHub Actions cron job that pings `/status` every 10 minutes to keep the service awake. GitHub Actions was chosen over an external service like UptimeRobot specifically because this repo is Public — Actions minutes are free and unlimited for public repos; on a private repo this frequency would exceed the 2000-free-minutes/month quota (GitHub bills a 1-minute minimum per run regardless of actual duration: a 10-minute interval is ≈144 runs/day ≈ 4000+ billed minutes/month).
+It later turned out GitHub Actions' `schedule` trigger **does not guarantee it actually runs at the configured frequency** — `gh run list` showed that despite the `*/10 * * * *` config, real gaps between runs often stretched to 1–4+ hours (GitHub's own docs acknowledge schedule triggers "can be delayed during periods of high load"), far exceeding Render's 15-minute sleep threshold, so cold starts could still happen mid-session. The actual fix is a heartbeat added on the frontend (`fireless-war-web/script.js`): as long as a tab is open, it pings `/status` once immediately on load and then every 5 minutes after, independent of any external scheduler's timing precision — as long as a GM is actively playing, the tab itself keeps the backend from ever seeing 15 minutes of true idle. The GitHub Actions cron is still kept as a secondary backup (it does still fire sometimes, just not reliably enough to depend on alone).
 
-**中文**:後來發現 GitHub Actions 的 `schedule` 觸發**不保證真的照設定的頻率執行**——實測 `gh run list` 顯示,雖然設定是每 10 分鐘,實際間隔卻常常拉長到 1~4 小時以上(GitHub 官方文件本身也承認 schedule 觸發「可能因系統負載而延遲」),遠超過 Render 15 分鐘的休眠門檻,冷啟動因此還是會在遊戲進行中發生。真正解決這個問題的是前端(`fireless-war-web/script.js`)自己加的 heartbeat:只要分頁還開著,一載入就先打一次 `/status`,之後每 5 分鐘再打一次,不依賴任何外部排程器的時間精準度——只要主持人在玩,分頁就不會讓後端閒置超過 15 分鐘。GitHub Actions 的 cron 依然保留當作次要備援(還是會不定期觸發,只是不能單獨依賴它)。
+#### File Layout
 
-**English**: It later turned out GitHub Actions' `schedule` trigger **does not guarantee it actually runs at the configured frequency** — `gh run list` showed that despite the `*/10 * * * *` config, real gaps between runs often stretched to 1–4+ hours (GitHub's own docs acknowledge schedule triggers "can be delayed during periods of high load"), far exceeding Render's 15-minute sleep threshold, so cold starts could still happen mid-session. The actual fix is a heartbeat added on the frontend (`fireless-war-web/script.js`): as long as a tab is open, it pings `/status` once immediately on load and then every 5 minutes after, independent of any external scheduler's timing precision — as long as a GM is actively playing, the tab itself keeps the backend from ever seeing 15 minutes of true idle. The GitHub Actions cron is still kept as a secondary backup (it does still fire sometimes, just not reliably enough to depend on alone).
-
-### 檔案結構 / File Layout
-
-**中文**:程式碼依職責分成四個套件,`app.py`(路由入口)留在根目錄:
-
-**English**: Code is split into four packages by responsibility, with `app.py` (the routing entry point) staying at repo root:
+Code is split into four packages by responsibility, with `app.py` (the routing entry point) staying at repo root:
 
 ```
-app.py                 路由 / routes(gunicorn 的啟動目標 / gunicorn's entry point)
-configs/config.py       集中管理設定值與環境變數 / centralized settings & env vars
-cloud_utils/            Google Sheet/Drive 存取層,只知道怎麼跟 API 對話,不理解資料的業務意義
-                         Sheet/Drive access layer — only knows how to talk to the APIs, not what the data means
-  ├── sheet_access.py    Sheet「內容層級」/ Sheet content-level
-  └── drive_access.py    Drive「檔案層級」/ Drive file-level
-data_utils/              業務邏輯層,知道 A~J 欄分別代表什麼、檔名怎麼組
-                         Business logic layer — knows what column A~J mean, how filenames are built
-  ├── parse_data.py       回合資料解析與計算 / round-data parsing & computation
-  └── record_data.py      場次檔案查詢與建立 / session-file lookup & creation
-auth_utils/              Google 登入驗證與主持人白名單
-                         Google sign-in verification & GM whitelist
-  ├── auth.py             ID Token 驗證 / ID token verification
-  └── gm.py               白名單查詢 / whitelist lookup
+app.py                 routes (gunicorn's entry point)
+configs/config.py       centralized settings & env vars
+cloud_utils/            Sheet/Drive access layer — only knows how to talk to the APIs, not what the data means
+  ├── sheet_access.py    Sheet content-level
+  └── drive_access.py    Drive file-level
+data_utils/              Business logic layer — knows what column A~J mean, how filenames are built
+  ├── parse_data.py       round-data parsing & computation
+  └── record_data.py      session-file lookup & creation
+auth_utils/              Google sign-in verification & GM whitelist
+  ├── auth.py             ID token verification
+  └── gm.py               whitelist lookup
 ```
 
-## 前端技術棧與關鍵決策 / Frontend Stack & Key Decisions
+### Frontend Stack & Key Decisions
 
-**中文**:Vanilla JavaScript(無框架、無建置流程),`Chart.js` + `chartjs-plugin-datalabels` 畫長條圖,Google Fonts 的 Noto Sans TC 作為主字型,整站部署在 GitHub Pages(Free 方案要求 repo 是 Public 才能開啟 Pages 功能)。
+Vanilla JavaScript (no framework, no build step), `Chart.js` + `chartjs-plugin-datalabels` for bar charts, Google Fonts' Noto Sans TC as the primary typeface, deployed entirely on GitHub Pages (the free tier requires the repo be Public to enable Pages).
 
-**English**: Vanilla JavaScript (no framework, no build step), `Chart.js` + `chartjs-plugin-datalabels` for bar charts, Google Fonts' Noto Sans TC as the primary typeface, deployed entirely on GitHub Pages (the free tier requires the repo be Public to enable Pages).
+#### Three-Page Flow
 
-### 三頁式流程 / Three-Page Flow
-
-**中文**:
-1. **第一頁**:輸入日期時間 → `GET /record` 查詢對應的場次 Sheet 是否存在。找到就直接進第二頁;找不到則詢問是否要 `POST /record` 建立新場次(複製自 Template)。
-2. **第二頁**:開場介紹畫面(「為期七日」「無火戰爭」+「正式開始!」按鍵),純粹的轉場頁,不會在這裡打任何 API——按下按鍵才會去抓資料進第三頁。
-3. **第三頁**:長條圖總覽——五位角色各自的事業等級長條圖、持有金錢/積分、共同數據面板(合法/非法事業加總、風頭事業指標、崩壞警示),搭配底部的回合切換器(水平滾輪選擇器,15 個回合選項)。
-
-**English**:
 1. **Page 1**: enter a date/time → `GET /record` checks whether the matching session Sheet exists. Found → go straight to page 2; not found → offer to `POST /record` to create a new one (copied from the Template).
 2. **Page 2**: an intro splash ("為期七日" / "無火戰爭" + a "正式開始!" button) — a pure transition screen, no API call happens here; only clicking the button fetches data and advances to page 3.
 3. **Page 3**: the chart-grid overview — each of the five characters' business-level bar chart, money/points, a common-data panel (legal/illegal business totals, the hot-business indicator, a collapse warning banner), plus a round switcher at the bottom (a horizontal scroll-wheel picker with 15 round options).
 
-### 資料視覺化邏輯 / Data Visualization Logic
+#### Data Visualization Logic
 
-**中文**:每位角色的五項事業(正當事業/闇金/色情/毒品/軍火)畫成長條圖,Y軸固定 0–25。三個全域轉換開關(`oniwara_out`/`mike_out`/`kouno_single`)會改變顯示邏輯——例如 `oniwara_out=true` 時,鬼原響介的事業「洗白」,顯示名稱與計入合法/非法事業的方式都會改變。共同數據面板會即時判斷「合法事業 vs 非法事業」的差距,超過閾值顯示崩壞警示;若 `Global_Param!B10` 開關開啟,額外計算並顯示「風頭事業」(非法事業四類加總最高者,同分時毒品優先於金融、軍火、色情)。
+Each character's five business categories (general/finance/sex/drug/arms) render as a bar chart, Y-axis fixed at 0–25. Three global toggles (`oniwara_out`/`mike_out`/`kouno_single`) change display logic — e.g. when `oniwara_out` is true, Oniwara's businesses "go legitimate," changing both their display labels and how they're counted toward legal vs. illegal totals. The common-data panel evaluates the legal-vs-illegal gap live and shows a collapse warning past a threshold; if the `Global_Param!B10` toggle is on, it additionally computes and shows the "hot business" (the illegal category with the highest summed level across characters, ties broken drug > finance > arms > sex).
 
-**English**: Each character's five business categories (general/finance/sex/drug/arms) render as a bar chart, Y-axis fixed at 0–25. Three global toggles (`oniwara_out`/`mike_out`/`kouno_single`) change display logic — e.g. when `oniwara_out` is true, Oniwara's businesses "go legitimate," changing both their display labels and how they're counted toward legal vs. illegal totals. The common-data panel evaluates the legal-vs-illegal gap live and shows a collapse warning past a threshold; if the `Global_Param!B10` toggle is on, it additionally computes and shows the "hot business" (the illegal category with the highest summed level across characters, ties broken drug > finance > arms > sex).
+#### Google Sign-In UI
 
-### Google 登入 UI / Google Sign-In UI
+The sign-in UI only appears on page 1, auto-hidden from page 2 onward. Session state has zero client-side persistence (no token in localStorage/cookies) — on refresh, it relies entirely on Google Identity Services' silent re-auth (`prompt({auto_select:true})`); if multiple Google accounts are signed into the browser, Google forces an explicit account-picker click (a platform-level privacy constraint, not something the app can bypass). The deliberate choice not to persist locally: a stored token would mean a GM removed from the whitelist could keep working in an already-open tab until the token naturally expires; without persistence, a whitelist change on the backend takes effect the moment the page is refreshed.
 
-**中文**:登入狀態只在第一頁顯示,進入第二頁後自動隱藏。session 完全不做 client-side 持久化(沒有用 localStorage/cookie 存 token)——重新整理後靠 Google Identity Services 的靜默重新登入(`prompt({auto_select:true})`)嘗試無感恢復,如果瀏覽器裡有多個 Google 帳號同時登入,Google 會要求手動選一次帳號(這是 Google 平台自身的隱私限制,無法繞過)。刻意不做本機持久化的原因:如果存了 token,主持人被從白名單移除後,舊分頁可能要等 token 真的過期才會感覺到權限被收回;不存,才能保證後端白名單一改,下次重新整理立刻生效。
+### End-to-End Data Flow
 
-**English**: The sign-in UI only appears on page 1, auto-hidden from page 2 onward. Session state has zero client-side persistence (no token in localStorage/cookies) — on refresh, it relies entirely on Google Identity Services' silent re-auth (`prompt({auto_select:true})`); if multiple Google accounts are signed into the browser, Google forces an explicit account-picker click (a platform-level privacy constraint, not something the app can bypass). The deliberate choice not to persist locally: a stored token would mean a GM removed from the whitelist could keep working in an already-open tab until the token naturally expires; without persistence, a whitelist change on the backend takes effect the moment the page is refreshed.
+GM signs in → enters a date/time → `GET /record` (with a Bearer token) looks up the session file → obtains a `spreadsheet_id` or creates one → intro page → clicks "正式開始!" → `GET /round` (with `spreadsheet_id` + Bearer token) batch-reads that round's full data in one call → frontend renders the charts and common-data panel → switching rounds via the bottom picker repeats the `GET /round` call.
 
-## 資料流程總覽 / End-to-End Data Flow
+### Known Limitations
 
-**中文**:主持人登入 → 輸入日期時間 → `GET /record`(帶 Bearer token)查詢場次檔案 → 找到 `spreadsheet_id` 或建立新檔案 → 進入介紹頁 → 按「正式開始!」→ `GET /round`(帶 `spreadsheet_id` + Bearer token)一次性 batch 讀取該回合所有資料 → 前端渲染長條圖與共同數據 → 之後每次用底部的回合切換器換回合,重複呼叫 `GET /round`。
-
-**English**: GM signs in → enters a date/time → `GET /record` (with a Bearer token) looks up the session file → obtains a `spreadsheet_id` or creates one → intro page → clicks "正式開始!" → `GET /round` (with `spreadsheet_id` + Bearer token) batch-reads that round's full data in one call → frontend renders the charts and common-data panel → switching rounds via the bottom picker repeats the `GET /round` call.
-
-## 已知限制 / Known Limitations
-
-**中文**:`oniwara_out`/`mike_out`/`kouno_single` 三個轉換開關、以及「城市經濟崩壞」這個最嚴重等級的警示,目前都只用合成測試資料驗證過邏輯,還沒在真實遊戲中實際觸發驗證過;`最終結算`(FinalDayResult)這個回合是否要有特殊畫面表現,尚未決定;`GET /round?spreadsheet_id=` 目前不會驗證這個 ID 是不是「合法建立過的場次檔案」,理論上帶入任意公開 Sheet ID 也會嘗試讀取。
-
-**English**: The three global toggles (`oniwara_out`/`mike_out`/`kouno_single`) and the most severe "city economy collapse" warning tier have only been verified with synthetic test data, not yet exercised against real toggled game-sheet state. Whether the Final Day round (`FinalDayResult`) should get special display treatment is still undecided. `GET /round?spreadsheet_id=` does not currently validate that the given ID is a legitimately-created session file — any accessible Sheet ID would technically be attempted.
+The three global toggles (`oniwara_out`/`mike_out`/`kouno_single`) and the most severe "city economy collapse" warning tier have only been verified with synthetic test data, not yet exercised against real toggled game-sheet state. Whether the Final Day round (`FinalDayResult`) should get special display treatment is still undecided. `GET /round?spreadsheet_id=` does not currently validate that the given ID is a legitimately-created session file — any accessible Sheet ID would technically be attempted.
 
 ---
 
