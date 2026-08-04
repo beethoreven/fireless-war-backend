@@ -48,12 +48,17 @@ REPORT_FORMAT = [
 # Sheet 上的角色姓名 -> 前端 API 用的英文 key
 # 這個對照表是固定的,不受 oniwara_out/mike_out/kouno_single 轉換影響
 # (轉換只改「代表組織」「事業名稱/顏色」這些顯示層的東西,英文 key 本身不變)
+#
+# Demo 版本刻意用「角色A~E」取代真實姓名(不曝露遊戲主題內容),順序對應
+# FirelessWar_Demo 這份 Sheet 裡 A4:A8 實際列出的角色姓名——跟正式版
+# CHARACTER_SLUGS 是同一份對照表,只是值換成 demo 版本自己的命名,所以
+# demo 分支才需要獨立改這裡,main 分支不要套用這個改動。
 CHARACTER_SLUGS = {
-    "鬼原響介": "oniwara",
-    "麥克・葛雷希爾": "mike",
-    "鬼怒川新助": "kinugawa",
-    "河野麗一": "kouno",
-    "PH-003": "ph003",
+    "角色A": "oniwara",
+    "角色B": "mike",
+    "角色C": "kinugawa",
+    "角色D": "kouno",
+    "角色E": "ph003",
 }
 
 # 五個事業欄位的中文名稱 -> 前端 API 用的英文 key
