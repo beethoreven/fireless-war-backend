@@ -70,4 +70,4 @@ GOOGLE_CLIENT_ID = os.environ.get(
 # 正式環境在 Render 後台的 Environment 設定)。沒設定時視為空清單,
 # 也就是沒有任何人被授權,這是刻意的安全預設值(壞掉時關閉存取,
 # 而不是不小心開放給所有人)。
-GM_WHITELIST_RAW = os.environ.get("GM_WHITELIST", "")
+PERMITTED_USER_RAW = os.environ.get("PERMITTED_USER", "")

@@ -53,7 +53,7 @@ Flask + gunicorn，部署在 Render 免費方案。主要相依套件見 `requir
 
 #### 主持人白名單
 
-白名單(`auth_utils/gm.py`)從 `GM_WHITELIST` 環境變數讀取(逗號分隔的 email 清單)，不寫死在程式碼裡——這份清單是真實個人資料，不該進版本控制，尤其這個 repo 是 Public。沒設定這個環境變數時，視為空清單，也就是沒有任何人被授權，這是刻意的安全預設值(壞掉時關閉存取，而不是不小心開放給所有人)。要開放給新的主持人使用，不用改程式碼、不用 push:去 Render 後台的 Environment 設定編輯這個變數即可，存檔後自動重新部署套用新值。
+白名單(`auth_utils/gm.py`)從 `PERMITTED_USER` 環境變數讀取(逗號分隔的 email 清單)，不寫死在程式碼裡——這份清單是真實個人資料，不該進版本控制，尤其這個 repo 是 Public。沒設定這個環境變數時，視為空清單，也就是沒有任何人被授權，這是刻意的安全預設值(壞掉時關閉存取，而不是不小心開放給所有人)。要開放給新的主持人使用，不用改程式碼、不用 push:去 Render 後台的 Environment 設定編輯這個變數即可，存檔後自動重新部署套用新值。
 
 #### 其他安全性強化
 
@@ -212,7 +212,7 @@ git push -u origin main
    - **Start Command**:`gunicorn app:app --bind 0.0.0.0:$PORT`
      (Render 會用環境變數 `$PORT` 指定實際要用的 port,這行指令是告訴 gunicorn 要監聽那個 port,不能省略，不然部署後連不進去)
    - **Instance Type**:選 **Free**
-5. 到 **Environment** 分頁，依下方「環境變數總覽」把需要的變數都設定好(至少要有 `GM_WHITELIST`,不然沒有任何人能通過登入驗證)
+5. 到 **Environment** 分頁，依下方「環境變數總覽」把需要的變數都設定好(至少要有 `PERMITTED_USER`,不然沒有任何人能通過登入驗證)
 6. 點 **Create Web Service**
 
 Render 會開始自動建置，這個過程約 1~3 分鐘，你可以在畫面上看到即時的部署 log。
@@ -239,7 +239,7 @@ https://fireless-war-backend.onrender.com/status
 
 | 變數名稱 | 必填? | 說明 |
 |---|---|---|
-| `GM_WHITELIST` | **必填** | 逗號分隔的主持人 email 清單，例如 `a@gmail.com,b@gmail.com`。不設定 = 空清單 = 沒有任何人能登入，這是刻意的安全預設值。 |
+| `PERMITTED_USER` | **必填** | 逗號分隔的主持人 email 清單，例如 `a@gmail.com,b@gmail.com`。不設定 = 空清單 = 沒有任何人能登入，這是刻意的安全預設值。 |
 | `APPS_SCRIPT_URL` | **必填**(要用到 `POST /record` 才需要) | 部署 Apps Script Web App 後拿到的網址，結尾是 `/exec`。見 Part D。 |
 | `APPS_SCRIPT_SECRET` | **必填**(同上) | 跟 Apps Script 裡 `SECRET` 常數完全一致的密語，用來擋掉沒有這組密語的請求。 |
 | `DRIVE_FOLDER_ID` | **必填**(同上) | 場次檔案所在的 Drive 資料夾 ID,`GET /record` 查詢時會用到。 |
@@ -250,7 +250,7 @@ https://fireless-war-backend.onrender.com/status
 本機測試前記得先 `export` 這些值，例如:
 
 ```bash
-export GM_WHITELIST="你的Google帳號email@gmail.com"
+export PERMITTED_USER="你的Google帳號email@gmail.com"
 export APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycb.../exec"
 export APPS_SCRIPT_SECRET="你的密語"
 export DRIVE_FOLDER_ID="你的資料夾ID"
@@ -272,7 +272,7 @@ curl -H "Authorization: Bearer <你複製到的 ID Token>" \
   "http://127.0.0.1:5001/round?day=1st&type=Morning"
 ```
 
-沒帶 token,或 token 對應的 email 不在 `GM_WHITELIST` 名單裡，都會回傳 `401`。
+沒帶 token,或 token 對應的 email 不在 `PERMITTED_USER` 名單裡，都會回傳 `401`。
 
 **`/round` 回應格式範例**(讀取真實遊戲資料時的實際結構):
 
@@ -386,7 +386,7 @@ GM authentication originally worked by having the frontend self-report an email 
 
 #### GM Whitelist
 
-The whitelist (`auth_utils/gm.py`) is read from the `GM_WHITELIST` environment variable (comma-separated emails), never hardcoded — this is real personal data that shouldn't be in version control, especially since this repo is Public. When unset, it defaults to an empty list — nobody authorized — a deliberate fail-closed default. Authorizing a new GM requires no code change or push: just edit the variable in Render's dashboard, which triggers an automatic redeploy.
+The whitelist (`auth_utils/gm.py`) is read from the `PERMITTED_USER` environment variable (comma-separated emails), never hardcoded — this is real personal data that shouldn't be in version control, especially since this repo is Public. When unset, it defaults to an empty list — nobody authorized — a deliberate fail-closed default. Authorizing a new GM requires no code change or push: just edit the variable in Render's dashboard, which triggers an automatic redeploy.
 
 #### Other Security Hardening
 
@@ -545,7 +545,7 @@ git push -u origin main
    - **Start Command**: `gunicorn app:app --bind 0.0.0.0:$PORT`
      (Render provides the actual port to use via the `$PORT` environment variable; this command tells gunicorn to listen on that port — don't omit it, or the deployed service won't be reachable)
    - **Instance Type**: **Free**
-5. On the **Environment** tab, set up whatever variables you need per "Environment Variables Overview" below (at minimum `GM_WHITELIST`, or nobody will be able to pass login verification)
+5. On the **Environment** tab, set up whatever variables you need per "Environment Variables Overview" below (at minimum `PERMITTED_USER`, or nobody will be able to pass login verification)
 6. Click **Create Web Service**
 
 Render will start building automatically — this takes about 1–3 minutes, and you can watch the live deploy log on screen.
@@ -572,7 +572,7 @@ Seeing `{"status": "ok", ...}` means the basic deployment succeeded.
 
 | Variable | Required? | Description |
 |---|---|---|
-| `GM_WHITELIST` | **Required** | Comma-separated list of GM emails, e.g. `a@gmail.com,b@gmail.com`. Unset = empty list = nobody can log in — a deliberate safety default. |
+| `PERMITTED_USER` | **Required** | Comma-separated list of GM emails, e.g. `a@gmail.com,b@gmail.com`. Unset = empty list = nobody can log in — a deliberate safety default. |
 | `APPS_SCRIPT_URL` | **Required** (only if using `POST /record`) | The URL you get after deploying the Apps Script Web App, ending in `/exec`. See Part D. |
 | `APPS_SCRIPT_SECRET` | **Required** (same as above) | Must exactly match the `SECRET` constant in the Apps Script, used to reject requests that don't carry this shared secret. |
 | `DRIVE_FOLDER_ID` | **Required** (same as above) | The Drive folder ID where session files live; used by `GET /record` lookups. |
@@ -583,7 +583,7 @@ Seeing `{"status": "ok", ...}` means the basic deployment succeeded.
 Remember to `export` these values before testing locally, e.g.:
 
 ```bash
-export GM_WHITELIST="your-google-account-email@gmail.com"
+export PERMITTED_USER="your-google-account-email@gmail.com"
 export APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycb.../exec"
 export APPS_SCRIPT_SECRET="your secret"
 export DRIVE_FOLDER_ID="your folder ID"
@@ -605,7 +605,7 @@ curl -H "Authorization: Bearer <the ID Token you copied>" \
   "http://127.0.0.1:5001/round?day=1st&type=Morning"
 ```
 
-Without a token, or if the token's email isn't in the `GM_WHITELIST`, you'll get a `401`.
+Without a token, or if the token's email isn't in the `PERMITTED_USER`, you'll get a `401`.
 
 **Example `/round` response shape** (the actual structure when reading real game data):
 
