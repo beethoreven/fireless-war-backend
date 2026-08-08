@@ -122,10 +122,25 @@ def _resolve_format(day: str, type: str):
 
 
 def _to_int(value):
-    """儲存格數字欄位轉成 int,空字串視為 0。"""
+    """
+    儲存格數字欄位轉成 int,空字串視為 0。
+
+    Google Sheets API 回傳的是儲存格的「顯示值」,所以數字會照試算表上的
+    格式跑出來——加了千分位的欄位會拿到 "1,234",前後也可能有空白。
+    直接 int() 會炸,所以先正規化。
+
+    真的不是數字時刻意丟 RuntimeError 而不是 ValueError:app.py 那層把
+    ValueError 當成「呼叫端參數傳錯」回 400,但儲存格內容有問題是資料面的
+    問題,不該被誤報成使用者傳錯參數(而且訊息要指出是哪一格的值有問題)。
+    """
     if value in ("", None):
         return 0
-    return int(value)
+
+    normalized = str(value).strip().replace(",", "")
+    try:
+        return int(normalized)
+    except ValueError as e:
+        raise RuntimeError(f"儲存格數值無法轉成數字:{value!r}") from e
 
 
 def _cell_value(batch_values, idx, default=""):
@@ -253,6 +268,12 @@ def _compute_hot_business(business_level, oniwara_out: bool):
             totals[key] += entry[key]
 
     max_value = max(totals.values())
+    if max_value == 0:
+        # 四類非法事業加總全是 0(沒有人經營非法事業,或角色資料整批沒讀到)。
+        # 這種情況「風頭事業」根本不存在,回 None 讓前端顯示「-」;
+        # 不能讓下面的同分優先序邏輯挑出毒品當答案——那是憑空生出來的結論。
+        return None
+
     for key in HOT_BUSINESS_PRIORITY:
         if totals[key] == max_value:
             return key

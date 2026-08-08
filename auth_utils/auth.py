@@ -23,9 +23,24 @@ from configs import config
 _google_request = google_requests.Request()
 
 
+class VerificationUnavailable(Exception):
+    """
+    「這次驗不了」,不等於「這個 token 是假的」。
+
+    驗證 ID Token 需要跟 Google 拿公開金鑰,連不上 Google、逾時、
+    對方暫時掛掉,都會落在這一類。這種情況必須跟「token 真的無效」
+    分開處理——混在一起的話,Google 那邊打個嗝就會把正在跑團的主持人
+    誤判成登入過期踢出去,而他手上的 token 其實好好的。
+    """
+
+
 def verify_google_id_token(token: str):
     """
-    驗證 Google ID Token,回傳驗證過的 email(字串);驗證失敗回傳 None。
+    驗證 Google ID Token,回傳驗證過的 email(字串)。
+
+    token 確定無效(格式錯、簽章不符、過期、audience 不對)回傳 None;
+    但如果是「暫時驗不了」(連不上 Google 等),丟出 VerificationUnavailable,
+    讓呼叫端可以回一個「稍後再試」而不是「你沒登入」。
     """
     if not token:
         return None
@@ -37,6 +52,11 @@ def verify_google_id_token(token: str):
     except ValueError:
         # 格式錯誤、簽章驗證失敗、過期、audience 不符,都會是 ValueError
         return None
+    except Exception as e:
+        # 其餘全部視為「這次驗不了」(TransportError、連線逾時等)。
+        # 這裡刻意攔得寬:任何非 ValueError 的意外,都不該被解讀成
+        # 「這個使用者的登入無效」,寧可回報成暫時性故障。
+        raise VerificationUnavailable(str(e)) from e
 
     if not payload.get("email_verified"):
         # Google 帳號本身的 email 沒有經過驗證(理論上很少見),不能信任

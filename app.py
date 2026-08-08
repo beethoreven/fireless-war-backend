@@ -21,12 +21,18 @@ app.json.ensure_ascii = False
 # allow_headers 要明確帶 Authorization——登入後每次 API 呼叫都會帶
 # `Authorization: Bearer <Google ID Token>`,沒有這行,瀏覽器的
 # CORS 預檢(preflight)會擋下這個 header,請求根本送不到後端。
+# 下面兩條 localhost 規則是 regex,而 Flask-CORS 比對 regex 時用的是 re.match——
+# 只保證「開頭吻合」,不會自動比對到結尾。少了結尾的 $,像
+# `http://localhost:8080.example.com` 這種前綴相同的來源也會被放行
+# (實測確認過)。雖然瀏覽器的 Origin 不可能長這樣、而且這個 API 是用
+# Authorization header 而不是 cookie 驗證(就算來源被放行也偷不到 token),
+# 但補上 $ 是零成本的,不要把安全性建立在「瀏覽器應該不會這樣送」上面。
 CORS(
     app,
     origins=[
         "https://beethoreven.github.io",
-        r"http://localhost:\d+",
-        r"http://127\.0\.0\.1:\d+",
+        r"http://localhost:\d+$",
+        r"http://127\.0\.0\.1:\d+$",
     ],
     allow_headers=["Content-Type", "Authorization"],
 )
@@ -56,7 +62,12 @@ def require_gm_email(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
         token = auth.extract_bearer_token(request)
-        email = auth.verify_google_id_token(token)
+        try:
+            email = auth.verify_google_id_token(token)
+        except auth.VerificationUnavailable:
+            # 連不上 Google 驗不了,不是這個使用者的問題——回 503 而不是 401,
+            # 前端才不會把暫時性故障當成登入失效、把人踢出登入狀態。
+            return jsonify({"error": "目前無法驗證登入狀態,請稍後再試"}), 503
         if email is None or not gm.is_valid_gm_email(email):
             return jsonify({"error": "未登入或此帳號未獲授權"}), 401
         request.gm_email = email
@@ -79,7 +90,13 @@ def auth_status():
     範例:GET /auth/status(需帶 Authorization: Bearer <ID Token>)
     """
     token = auth.extract_bearer_token(request)
-    email = auth.verify_google_id_token(token)
+
+    try:
+        email = auth.verify_google_id_token(token)
+    except auth.VerificationUnavailable:
+        # 跟 401 分開:401 是「你的登入無效」(前端該登出),
+        # 503 是「我現在驗不了」(前端該保留登入狀態、稍後重試)。
+        return jsonify({"authorized": False, "error": "目前無法驗證登入狀態,請稍後再試"}), 503
 
     if email is None:
         return jsonify({"authorized": False, "error": "登入憑證無效或已過期"}), 401
@@ -165,7 +182,20 @@ def create_record():
 
 
 @app.route("/round", methods=["GET"])
-@limiter.limit("30 per minute")
+@limiter.limit(
+    "30 per minute",
+    # 只有「真的通過驗證」的請求才扣額度。
+    #
+    # Flask-Limiter 的檢查是在 before_request 做的,一定early於路由裡的
+    # 身分驗證,所以預設情況下連 401 都會照扣——實測:連續送 35 個完全
+    # 沒帶 token 的請求,前 30 個扣光額度、後 5 個回 429。等於任何人不用
+    # 登入就能把所有主持人鎖在門外一整分鐘,而且這些請求根本碰不到
+    # Google Sheets,扣它們的額度也保護不到任何東西。
+    #
+    # deduct_when 讓「檢查」照舊、但「扣款」延到回應產生後再依狀態碼決定:
+    # 401(未授權)/503(暫時驗不了)都不扣,額度只反映真正會去讀 Sheet 的流量。
+    deduct_when=lambda response: response.status_code not in (401, 503),
+)
 @require_gm_email
 def round_status():
     """

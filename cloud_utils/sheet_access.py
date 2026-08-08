@@ -77,20 +77,9 @@ def sheet_batch_read(ranges: list, spreadsheet_id: str = None):
     return [value_range.get("values", []) for value_range in result.get("valueRanges", [])]
 
 
-def sheet_write(sheet_name: str, cell: str, value):
-    """
-    寫入指定儲存格(尚未實作)。
-    未來若開放寫入功能,記得同步：
-      1. 把 config.SCOPES 加上 spreadsheets 的寫入權限
-         (目前是 .readonly,寫入需要改成不含 readonly 的完整 scope)
-      2. 到 Google Sheet 的共用設定,把 Service Account 的權限從「檢視者」改成「編輯者」
-    """
-    raise NotImplementedError("寫入功能尚未實作")
-
-
-def sheet_clear(sheet_name: str, cell_range: str):
-    """
-    清空指定範圍的內容(尚未實作)。
-    注意事項同 sheet_write。
-    """
-    raise NotImplementedError("清空功能尚未實作")
+# 這一層目前只做讀取。之前這裡放了 sheet_write / sheet_clear 兩個
+# 只會 raise NotImplementedError 的空殼函式,沒有任何地方呼叫,已經移除;
+# 真的要加寫入功能時,除了實作函式本身,還有兩件事一定要一起處理:
+#   1. config.SCOPES 目前是 .readonly,要換成不含 readonly 的完整 scope
+#   2. 到 Google Sheet 的共用設定,把 Service Account 從「檢視者」改成「編輯者」
+# 少做任何一項,寫入都會被 Google 擋下來。

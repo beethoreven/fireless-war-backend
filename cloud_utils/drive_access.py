@@ -49,6 +49,21 @@ def _get_session():
     return _session
 
 
+def _escape_query_value(value: str):
+    """
+    跳脫要塞進 Drive query 單引號字串裡的值。
+
+    Drive 的查詢語法長這樣:`name = '檔名'`。值裡面如果混進單引號,
+    就會提前把字串收掉、後面的內容變成查詢語法的一部分,語意被改寫
+    (同一類問題的 SQL 版本就是 SQL injection)。
+
+    目前唯一的呼叫路徑上,檔名都先被 record_data 的正規表示式擋過
+    (只允許數字和底線),所以現在不可能出事。這層跳脫是不想把安全性
+    寄託在「上游一定會擋」——上游哪天放寬了,這裡不會跟著破功。
+    """
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
 def find_file_by_name(name: str, folder_id: str):
     """
     在指定資料夾中依檔名搜尋檔案(排除已丟進垃圾桶的)。
@@ -58,7 +73,11 @@ def find_file_by_name(name: str, folder_id: str):
     folder_id: 資料夾 ID(對應 config.DRIVE_FOLDER_ID)
     """
     session = _get_session()
-    query = f"name = '{name}' and '{folder_id}' in parents and trashed = false"
+    query = (
+        f"name = '{_escape_query_value(name)}' "
+        f"and '{_escape_query_value(folder_id)}' in parents "
+        f"and trashed = false"
+    )
 
     resp = session.get(
         f"{DRIVE_API_BASE}/files",
