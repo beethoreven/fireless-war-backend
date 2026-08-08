@@ -35,7 +35,7 @@ Flask + gunicorn，部署在 Render 免費方案。主要相依套件見 `requir
 
 #### Google Sheets 存取
 
-用 `gspread` + Service Account 憑證唯讀存取。Google Sheets API 配額是「每個 Service Account 身份每分鐘 60 次讀取」，因此所有讀取都合併成單次 `values_batch_get` 呼叫(見 `cloud_utils/sheet_access.py`)，而不是逐格分開打 API——`/round` 原本要打 8 次 API，合併後只需要 1 次。`/round` 另外掛了 Flask-Limiter 的**全站共用**(不分 IP、不分主持人)`30 次/分鐘`限制，因為要保護的是全站共用的單一 Service Account 配額，不是防止單一使用者太活躍。
+用 `gspread` + Service Account 憑證唯讀存取。Google Sheets API 配額是「每個 Service Account 身份每分鐘 60 次讀取」，因此所有讀取都合併成單次 `values_batch_get` 呼叫(見 `cloud_utils/sheet_access.py`)，而不是逐格分開打 API——`/round` 原本要打 8 次 API，合併後只需要 1 次。`/round` 另外掛了 Flask-Limiter 的**全站共用**(不分 IP、不分主持人)`30 次/分鐘`限制，因為要保護的是全站共用的單一 Service Account 配額，不是防止單一使用者太活躍。這個限制只對**通過驗證的請求**扣額度(`deduct_when`)——Flask-Limiter 的檢查發生在身分驗證之前，如果連未登入的 401 都算進去，任何不需要密碼的陌生人都能靠灌爆這個共用額度，把所有主持人鎖在門外一整分鐘。
 
 #### 建立新場次檔案:為什麼要繞一圈用 Apps Script
 
@@ -50,6 +50,8 @@ Flask + gunicorn，部署在 Render 免費方案。主要相依套件見 `requir
 #### Google 登入驗證
 
 主持人的身分驗證，原本是最陽春的「前端自己填 email、後端比對白名單」，任何人只要知道某位主持人的 email 字串就能冒充。現在改用真正的 Google 登入:前端用 Google Identity Services(GIS)取得使用者登入後的 ID Token(JWT)，每次呼叫 API 都夾帶 `Authorization: Bearer <token>`;後端(`auth_utils/auth.py`)用 `google-auth` 套件驗證這個 token 的簽章、有效期限、以及 audience(確認是發給我們自己這個 OAuth Client ID，不是別人專案的 token)，驗證通過後拿到「Google 保證過的」email，再比對白名單。整個流程無法被瀏覽器 devtools 繞過，因為驗證發生在後端，不是前端自己判斷要不要放行。
+
+後端刻意區分兩種「驗證沒過」:token 真的無效/過期回 `401`;連不上 Google 拿公開金鑰之類的暫時性故障回 `503`。這兩種前端的處理方式完全不同——只有 `401` 才會把使用者登出、清掉 token。這是因為 `currentIdToken` 一旦被清空,45 分鐘那次靜默續期的排程(條件是 `if (currentIdToken)`)就會永久停止,而登入列在第二頁之後是隱藏的,使用者連重新登入的入口都看不到。所以前端遇到網路失敗或 `503` 時,會保留 token、鎖住讀取按鈕,並以指數退避(5 秒→60 秒上限)自動重試,而不是直接判定登入失效。
 
 #### 主持人白名單
 
@@ -368,7 +370,7 @@ Flask + gunicorn, deployed on Render's free tier. Key dependencies (see `require
 
 #### Google Sheets Access
 
-Read-only access via `gspread` with Service Account credentials. Google's Sheets API quota is 60 reads/minute per Service Account identity, so all reads within one request are merged into a single `values_batch_get` call (see `cloud_utils/sheet_access.py`) instead of one call per cell/range — `/round` used to make 8 separate API calls per request, now just 1. `/round` also carries a Flask-Limiter rate limit of 30/minute that is **global** (not per-IP, not per-GM), because the resource being protected is the shared Service Account quota itself, not any single user's activity.
+Read-only access via `gspread` with Service Account credentials. Google's Sheets API quota is 60 reads/minute per Service Account identity, so all reads within one request are merged into a single `values_batch_get` call (see `cloud_utils/sheet_access.py`) instead of one call per cell/range — `/round` used to make 8 separate API calls per request, now just 1. `/round` also carries a Flask-Limiter rate limit of 30/minute that is **global** (not per-IP, not per-GM), because the resource being protected is the shared Service Account quota itself, not any single user's activity. The limit only deducts for requests that pass authentication (`deduct_when`) — Flask-Limiter's check runs before the auth decorator, so counting unauthenticated 401s too would let any stranger with no credentials exhaust the shared budget and lock every GM out for a full minute.
 
 #### Why Creating a New Session File Goes Through Apps Script
 
@@ -383,6 +385,8 @@ The approach that shipped: a **Google Apps Script**, deployed as a Web App, call
 #### Google Sign-In Verification
 
 GM authentication originally worked by having the frontend self-report an email that the backend matched against a whitelist — anyone who knew a GM's email string could impersonate them. This is now real Google sign-in: the frontend uses Google Identity Services (GIS) to obtain an ID Token (JWT) after login, sent as `Authorization: Bearer <token>` on every API call. The backend (`auth_utils/auth.py`) uses the `google-auth` library to verify the token's signature, expiry, and audience (confirming it was issued for our own OAuth Client ID, not some other project's), then extracts the Google-verified email and checks it against the whitelist. This cannot be bypassed from browser devtools, since verification happens server-side, not as a frontend-decided gate.
+
+The backend deliberately distinguishes two kinds of "verification failed": a genuinely invalid/expired token returns `401`; a transient failure (e.g. can't reach Google's public keys) returns `503`. The frontend treats these very differently — only `401` signs the user out and clears the token. Clearing `currentIdToken` would permanently stop the 45-minute silent-refresh interval (guarded by `if (currentIdToken)`), and since the top bar is hidden from page 2 onward, the user would have no visible way back in. So on a network failure or `503`, the frontend keeps the token, locks the read button, and retries on exponential backoff (5s, capped at 60s) instead of treating it as a real sign-out.
 
 #### GM Whitelist
 
