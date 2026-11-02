@@ -208,33 +208,74 @@ def require_valid_login(view_func):
     return wrapper
 
 
-@app.route("/demo-session", methods=["POST"])
+@app.route("/demo-record", methods=["GET"])
 @limiter.limit(
     "10 per hour",
-    # Demo 複製動作會吃 Apps Script 執行配額跟 Drive 儲存空間(詳見
-    # cloud_utils/drive_access.py 的說明),這兩者都是跟正式版共用同一個
-    # Google 帳號身分,所以這裡刻意壓到很低的額度——跟 /round 的 30/分鐘
-    # 是完全獨立的另一個計數器(Flask-Limiter 按 view function 分開算),
-    # 不會互相排擠,也不會被 /round 的流量撐爆。
+    # Demo 讀寫都會吃 Drive API/Apps Script 執行配額(詳見 cloud_utils/drive_access.py
+    # 的說明),這兩者都是跟正式版共用同一個 Google 帳號身分,所以這裡刻意壓到
+    # 很低的額度——跟 /round、/demo-round 是完全獨立的另一個計數器
+    # (Flask-Limiter 按 view function 分開算),不會互相排擠。
     deduct_when=lambda response: response.status_code not in (401, 503),
 )
 @require_valid_login
-def create_demo_session():
+def get_demo_record():
     """
-    Demo 版本專用:不管登入的是哪個 Google 帳號,直接複製 FirelessWar_Demo
-    建立一份全新副本,並把這個帳號加為編輯者。
-    範例:POST /demo-session(需帶 Authorization: Bearer <ID Token>)
+    Demo 版本專用,對應正式版的 GET /record:依日期時間查詢 demo 場次檔案
+    是否存在,純查詢,不會建立任何東西。跟正式版唯一的差異是不檢查白名單
+    (require_valid_login 而不是 require_gm_email),流程、回應格式完全一樣。
+    範例:GET /demo-record?datetime=2026_07_01_18_30(需帶 Authorization: Bearer <ID Token>)
 
-    跟正式版的 POST /record 不同,不需要 datetime 參數,每次呼叫都會建立
-    新的一份(不會先查詢是否已存在)——demo 訪客是一次性的,不需要被同一個
-    檔案重新找到。
+    200 = 找到既有檔案
+    404 = 查無此檔案(前端可據此詢問使用者是否要建立新場次,再打 POST /demo-record)
+    400 = datetime 格式不合法
+    401 = 未登入或登入憑證無效
+    """
+    datetime_str = request.args.get("datetime")
+
+    if not datetime_str:
+        return jsonify({"error": "Missing required parameter: datetime"}), 400
+
+    try:
+        spreadsheet_id = record_data.find_demo_record(datetime_str)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Error looking up the demo session file: {str(e)}"}), 500
+
+    if spreadsheet_id is None:
+        return jsonify({"error": "No demo session file found for that date/time"}), 404
+
+    return jsonify({"spreadsheet_id": spreadsheet_id}), 200
+
+
+@app.route("/demo-record", methods=["POST"])
+@limiter.limit(
+    "10 per hour",
+    deduct_when=lambda response: response.status_code not in (401, 503),
+)
+@require_valid_login
+def create_demo_record_route():
+    """
+    Demo 版本專用,對應正式版的 POST /record:複製 FirelessWar_Demo(不是
+    正式版 Template)建立新的 demo 場次檔案,並把這個登入帳號加為編輯者。
+    跟正式版唯一的差異一樣是不檢查白名單,其餘(只負責建立、不先查是否
+    已存在)完全一樣。
+    範例:POST /demo-record?datetime=2026_07_01_18_30(需帶 Authorization: Bearer <ID Token>)
 
     201 = 建立成功
     500 = 建立失敗(例如 Apps Script 連不上、密語不對、Drive 發生問題)
+    400 = datetime 格式不合法
     401 = 未登入或登入憑證無效
     """
+    datetime_str = request.args.get("datetime")
+
+    if not datetime_str:
+        return jsonify({"error": "Missing required parameter: datetime"}), 400
+
     try:
-        spreadsheet_id, warning = record_data.create_demo_record(request.demo_email)
+        spreadsheet_id, warning = record_data.create_demo_record(datetime_str, request.demo_email)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": f"Error creating the demo session file: {str(e)}"}), 500
 

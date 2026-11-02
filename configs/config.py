@@ -50,6 +50,11 @@ APPS_SCRIPT_SECRET = os.environ.get("APPS_SCRIPT_SECRET")
 # 場次檔名格式驗證用(對應 FirelessWar_YYYY_MM_DD_HH_MM 命名規則)
 RECORD_FILENAME_PREFIX = "FirelessWar_"
 
+# demo 版場次檔名前綴,要跟 apps_script/Code.gs 裡的 DEMO_FILENAME_PREFIX
+# 完全一致——find_demo_record 用這個組檔名去 Drive 裡搜尋,Apps Script
+# 那邊用同一個前綴去建立檔案,兩邊對不上就永遠查不到彼此建立的檔案。
+DEMO_RECORD_FILENAME_PREFIX = "FirelessWar_Demo_"
+
 # 場次檔案所在的 Drive 資料夾 ID(給 drive_access.find_file_by_name 搜尋用)
 DRIVE_FOLDER_ID = os.environ.get("DRIVE_FOLDER_ID")
 

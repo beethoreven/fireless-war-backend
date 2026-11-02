@@ -131,15 +131,17 @@ def create_via_apps_script(datetime_str: str, editor_email: str = None):
     return body["spreadsheet_id"], body.get("warning")
 
 
-def create_demo_via_apps_script(editor_email: str = None):
+def create_demo_via_apps_script(datetime_str: str, editor_email: str = None):
     """
     Demo 版本專用:請 Apps Script 複製 FirelessWar_Demo(不是正式版的 Template),
-    建立一份全新的 demo 副本,並把 editor_email 加為編輯者,回傳 (spreadsheet_id, warning)。
+    建立一份 demo 副本,並把 editor_email 加為編輯者,回傳 (spreadsheet_id, warning)。
 
     跟 create_via_apps_script 的差異只在帶給 Apps Script 的 `mode` 參數
-    (這裡帶 "demo"),複製哪個檔案、檔名怎麼組、放進哪個資料夾,都由 Apps Script
-    那邊的 demo 專用分支決定(見 apps_script/Code.gs 的 handleDemoCreate)。
-    不傳 datetime——demo 副本不需要靠日期時間被重新找到,每次登入都直接建立新的一份。
+    (這裡帶 "demo"),複製哪個檔案、放進哪個資料夾,都由 Apps Script 那邊的
+    demo 專用分支決定(見 apps_script/Code.gs 的 handleDemoCreate)。datetime
+    照樣傳過去,讓 Apps Script 组出 DEMO_FILENAME_PREFIX + datetime 這個檔名——
+    流程完全比照正式版的 create_via_apps_script(先 GET 查、404 才 POST 建),
+    唯一差異只有白名單檢查被拿掉,不是另一套機制。
 
     這支函式呼叫的是跟正式版同一個 Apps Script 部署(同一組 SECRET/URL),
     但正式版的 doPost 分支完全沒有被改動,這裡只是多傳一個正式版程式碼
@@ -150,6 +152,7 @@ def create_demo_via_apps_script(editor_email: str = None):
         json={
             "secret": config.APPS_SCRIPT_SECRET,
             "mode": "demo",
+            "datetime": datetime_str,
             "editor_email": editor_email,
         },
         timeout=30,

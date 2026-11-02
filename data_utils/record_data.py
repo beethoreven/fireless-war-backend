@@ -37,6 +37,11 @@ def _resolve_record_filename(datetime_str: str):
     return f"{config.RECORD_FILENAME_PREFIX}{datetime_str}"
 
 
+def _resolve_demo_record_filename(datetime_str: str):
+    """把 datetime 參數組成完整的 demo 場次檔名。"""
+    return f"{config.DEMO_RECORD_FILENAME_PREFIX}{datetime_str}"
+
+
 def find_record(datetime_str: str):
     """
     依日期時間字串搜尋既有的場次檔案。
@@ -73,13 +78,26 @@ def create_record(datetime_str: str, editor_email: str = None):
     return drive_access.create_via_apps_script(datetime_str, editor_email)
 
 
-def create_demo_record(editor_email: str = None):
+def find_demo_record(datetime_str: str):
     """
-    Demo 版本專用:複製 FirelessWar_Demo,建立一份新的 demo 副本,
+    Demo 版本專用:依日期時間字串搜尋既有的 demo 場次檔案。
+    對應 GET /demo-record,邏輯跟 find_record 完全一樣,差別只有檔名前綴
+    (DEMO_RECORD_FILENAME_PREFIX)跟搜尋到的是 demo 副本,不是正式場次檔案。
+    """
+    datetime_str = validate_datetime_param(datetime_str)
+    filename = _resolve_demo_record_filename(datetime_str)
+    return drive_access.find_file_by_name(filename, config.DRIVE_FOLDER_ID)
+
+
+def create_demo_record(datetime_str: str, editor_email: str = None):
+    """
+    Demo 版本專用:複製 FirelessWar_Demo,建立一份新的 demo 場次檔案,
     並把 editor_email 加為編輯者,回傳 (spreadsheet_id, warning) tuple。
 
-    對應 POST /demo-session。跟正式版的 create_record 不同,不需要 datetime
-    參數——demo 副本不會被重複查詢(不對應任何 GET /demo-record 之類的查詢路由),
-    每次登入都直接建立新的一份,由前端記住這次拿到的 spreadsheet_id 就好。
+    對應 POST /demo-record,流程跟正式版的 create_record 一樣
+    (只負責建立,不先檢查是否已存在;要不要先 GET 查一次由前端決定),
+    唯一差異是複製 FirelessWar_Demo 而不是正式版 Template,
+    這由 Apps Script 那邊的 mode="demo" 分支決定。
     """
-    return drive_access.create_demo_via_apps_script(editor_email)
+    datetime_str = validate_datetime_param(datetime_str)
+    return drive_access.create_demo_via_apps_script(datetime_str, editor_email)
