@@ -56,6 +56,18 @@ CHARACTER_SLUGS = {
     "PH-003": "ph003",
 }
 
+# Demo 版本專用:FirelessWar_Demo 這份 Sheet 用通用英文角色名,不是正式版的真實姓名,
+# 但內部 slug(oniwara/mike/...)跟正式版共用——顯示層、圖表配色、合法/非法事業規則
+# 都是靠 slug 判斷,不是靠角色姓名本身,所以不需要另外複製一套業務邏輯,
+# 只要在讀 demo 的 Sheet 時,把這份對照表傳進 build_round_response 取代預設值即可。
+DEMO_CHARACTER_SLUGS = {
+    "Character A": "oniwara",
+    "Character B": "mike",
+    "Character C": "kinugawa",
+    "Character D": "kouno",
+    "Character E": "ph003",
+}
+
 # 五個事業欄位的中文名稱 -> 前端 API 用的英文 key
 # 同樣固定不變,即使顯示名稱因為 oniwara_out 轉換變成「金融/餐酒/藥妝」,這裡的 key 還是原本這套
 BUSINESS_KEY_MAP = {
@@ -186,18 +198,24 @@ def _read_round_batch(sheet_name: str, spreadsheet_id):
     }
 
 
-def _rows_to_business_level(rows, format_fields, is_report_format: bool, kouno_single: bool):
+def _rows_to_business_level(rows, format_fields, is_report_format: bool, kouno_single: bool, character_slugs=None):
     """
     把 A4:J8 讀到的原始列資料,轉換成前端要的英文 key 格式。
 
     河野麗一併入 PH-003 的積分合併規則在這裡處理:kouno_single=False 時,
     河野麗一當次的積分(current_integral 或 expected_integral,視 type 而定)設為 None,
     同一筆數字併加到 PH-003 對應欄位上;金錢欄位不受影響,永遠是本人真實數字。
+
+    character_slugs: 角色姓名 -> slug 的對照表,不傳時用正式版的 CHARACTER_SLUGS
+    (demo 版本會傳 DEMO_CHARACTER_SLUGS,見 build_round_response 的說明)。
     """
+    if character_slugs is None:
+        character_slugs = CHARACTER_SLUGS
+
     business_level = {}
     for row in rows:
         char_name = row[0] if row else ""
-        slug = CHARACTER_SLUGS.get(char_name)
+        slug = character_slugs.get(char_name)
         if slug is None:
             continue
 
@@ -280,12 +298,15 @@ def _compute_hot_business(business_level, oniwara_out: bool):
     return None
 
 
-def build_round_response(day: str, type: str, spreadsheet_id: str = None):
+def build_round_response(day: str, type: str, spreadsheet_id: str = None, character_slugs=None):
     """
     組出 /round API 的完整回應內容。
 
     spreadsheet_id: 要讀哪一場遊戲的 Sheet(通常來自 GET /record 回傳的值)。
                     不傳則 fallback 用 config.SPREADSHEET_ID(本機測試用)。
+
+    character_slugs: 見 _rows_to_business_level 的說明。不傳時行為跟改動前完全一樣
+    (用正式版 CHARACTER_SLUGS),demo 專用路由(/demo-round)才會傳 DEMO_CHARACTER_SLUGS。
 
     day="Final" 時(只能配 type="Report"),讀取的是 FinalDayResult 頁籤,
     欄位結構跟 Morning 型態相同(H欄空白),不是一般 Report 頁籤的結構。
@@ -298,7 +319,7 @@ def build_round_response(day: str, type: str, spreadsheet_id: str = None):
     batch = _read_round_batch(sheet_name, spreadsheet_id)
 
     business_level = _rows_to_business_level(
-        batch["rows"], format_fields, is_report_format, batch["kouno_single"]
+        batch["rows"], format_fields, is_report_format, batch["kouno_single"], character_slugs
     )
     legal_business, illegal_business = _compute_business_totals(
         business_level, batch["oniwara_out"], batch["legal_basic"], batch["illegal_basic"]

@@ -71,3 +71,15 @@ def create_record(datetime_str: str, editor_email: str = None):
     """
     datetime_str = validate_datetime_param(datetime_str)
     return drive_access.create_via_apps_script(datetime_str, editor_email)
+
+
+def create_demo_record(editor_email: str = None):
+    """
+    Demo 版本專用:複製 FirelessWar_Demo,建立一份新的 demo 副本,
+    並把 editor_email 加為編輯者,回傳 (spreadsheet_id, warning) tuple。
+
+    對應 POST /demo-session。跟正式版的 create_record 不同,不需要 datetime
+    參數——demo 副本不會被重複查詢(不對應任何 GET /demo-record 之類的查詢路由),
+    每次登入都直接建立新的一份,由前端記住這次拿到的 spreadsheet_id 就好。
+    """
+    return drive_access.create_demo_via_apps_script(editor_email)

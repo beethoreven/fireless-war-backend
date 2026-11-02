@@ -181,6 +181,106 @@ def create_record():
     return jsonify(result), 201
 
 
+def require_valid_login(view_func):
+    """
+    Demo 版本專用的裝飾器:只檢查「這是不是一個真的、沒過期的 Google 登入」,
+    不像 require_gm_email 那樣額外比對白名單——demo 刻意開放給任何登入的 Google
+    帳號使用,這是它跟正式版唯一的授權差異,其餘驗證邏輯(token 簽章、audience、
+    503 跟 401 的分法)完全照搬 require_gm_email,原因見那邊的註解。
+
+    驗證通過後,把 email 存進 request.demo_email(刻意跟 require_gm_email 的
+    request.gm_email 分開命名,避免兩套裝飾器疊用時互相覆蓋、搞錯是從哪支
+    裝飾器驗證出來的)。
+    """
+
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        token = auth.extract_bearer_token(request)
+        try:
+            email = auth.verify_google_id_token(token)
+        except auth.VerificationUnavailable:
+            return jsonify({"error": "目前無法驗證登入狀態,請稍後再試"}), 503
+        if email is None:
+            return jsonify({"error": "未登入或登入憑證無效"}), 401
+        request.demo_email = email
+        return view_func(*args, **kwargs)
+
+    return wrapper
+
+
+@app.route("/demo-session", methods=["POST"])
+@limiter.limit(
+    "10 per hour",
+    # Demo 複製動作會吃 Apps Script 執行配額跟 Drive 儲存空間(詳見
+    # cloud_utils/drive_access.py 的說明),這兩者都是跟正式版共用同一個
+    # Google 帳號身分,所以這裡刻意壓到很低的額度——跟 /round 的 30/分鐘
+    # 是完全獨立的另一個計數器(Flask-Limiter 按 view function 分開算),
+    # 不會互相排擠,也不會被 /round 的流量撐爆。
+    deduct_when=lambda response: response.status_code not in (401, 503),
+)
+@require_valid_login
+def create_demo_session():
+    """
+    Demo 版本專用:不管登入的是哪個 Google 帳號,直接複製 FirelessWar_Demo
+    建立一份全新副本,並把這個帳號加為編輯者。
+    範例:POST /demo-session(需帶 Authorization: Bearer <ID Token>)
+
+    跟正式版的 POST /record 不同,不需要 datetime 參數,每次呼叫都會建立
+    新的一份(不會先查詢是否已存在)——demo 訪客是一次性的,不需要被同一個
+    檔案重新找到。
+
+    201 = 建立成功
+    500 = 建立失敗(例如 Apps Script 連不上、密語不對、Drive 發生問題)
+    401 = 未登入或登入憑證無效
+    """
+    try:
+        spreadsheet_id, warning = record_data.create_demo_record(request.demo_email)
+    except Exception as e:
+        return jsonify({"error": f"建立 Demo 場次檔案時發生錯誤:{str(e)}"}), 500
+
+    result = {"spreadsheet_id": spreadsheet_id}
+    if warning:
+        result["warning"] = warning
+
+    return jsonify(result), 201
+
+
+@app.route("/demo-round", methods=["GET"])
+@limiter.limit(
+    "10 per minute",
+    # 跟正式版 /round 的 30/分鐘是獨立的計數器,刻意壓低(正式版還沒上線,
+    # 這裡先抓一個遠低於正式版保留額度的數字),確保 demo 流量不管多大,
+    # 跟正式版合計都還在 Google Sheets API 60/分鐘的配額之內,留出安全邊際。
+    deduct_when=lambda response: response.status_code not in (401, 503),
+)
+@require_valid_login
+def demo_round_status():
+    """
+    Demo 版本專用的 /round,邏輯跟正式版完全一樣,差別只有兩個:
+    不檢查白名單(任何登入帳號都能讀),以及用 DEMO_CHARACTER_SLUGS
+    (通用角色名 Character A~E)取代正式版的真實角色姓名對照表。
+    範例:GET /demo-round?day=1st&type=Morning&spreadsheet_id=abc123...
+    (需帶 Authorization: Bearer <ID Token>)
+    """
+    day = request.args.get("day")
+    type_ = request.args.get("type")
+    spreadsheet_id = request.args.get("spreadsheet_id")
+
+    if not day or not type_:
+        return jsonify({"error": "缺少必要參數 day 或 type"}), 400
+
+    try:
+        result = parse_data.build_round_response(
+            day, type_, spreadsheet_id, character_slugs=parse_data.DEMO_CHARACTER_SLUGS
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"讀取資料時發生錯誤:{str(e)}"}), 500
+
+    return jsonify(result), 200
+
+
 @app.route("/round", methods=["GET"])
 @limiter.limit(
     "30 per minute",

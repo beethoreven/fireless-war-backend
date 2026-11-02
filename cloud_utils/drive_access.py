@@ -129,3 +129,35 @@ def create_via_apps_script(datetime_str: str, editor_email: str = None):
         raise RuntimeError(body.get("error", "Apps Script 回傳未知錯誤"))
 
     return body["spreadsheet_id"], body.get("warning")
+
+
+def create_demo_via_apps_script(editor_email: str = None):
+    """
+    Demo 版本專用:請 Apps Script 複製 FirelessWar_Demo(不是正式版的 Template),
+    建立一份全新的 demo 副本,並把 editor_email 加為編輯者,回傳 (spreadsheet_id, warning)。
+
+    跟 create_via_apps_script 的差異只在帶給 Apps Script 的 `mode` 參數
+    (這裡帶 "demo"),複製哪個檔案、檔名怎麼組、放進哪個資料夾,都由 Apps Script
+    那邊的 demo 專用分支決定(見 apps_script/Code.gs 的 handleDemoCreate)。
+    不傳 datetime——demo 副本不需要靠日期時間被重新找到,每次登入都直接建立新的一份。
+
+    這支函式呼叫的是跟正式版同一個 Apps Script 部署(同一組 SECRET/URL),
+    但正式版的 doPost 分支完全沒有被改動,這裡只是多傳一個正式版程式碼
+    從未讀過的欄位,不會影響正式版任何現有行為。
+    """
+    resp = requests.post(
+        config.APPS_SCRIPT_URL,
+        json={
+            "secret": config.APPS_SCRIPT_SECRET,
+            "mode": "demo",
+            "editor_email": editor_email,
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    body = resp.json()
+
+    if body.get("statusCode") != 200:
+        raise RuntimeError(body.get("error", "Apps Script 回傳未知錯誤"))
+
+    return body["spreadsheet_id"], body.get("warning")
