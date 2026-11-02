@@ -199,9 +199,9 @@ def require_valid_login(view_func):
         try:
             email = auth.verify_google_id_token(token)
         except auth.VerificationUnavailable:
-            return jsonify({"error": "目前無法驗證登入狀態,請稍後再試"}), 503
+            return jsonify({"error": "Could not verify sign-in right now, please try again later"}), 503
         if email is None:
-            return jsonify({"error": "未登入或登入憑證無效"}), 401
+            return jsonify({"error": "Not signed in or sign-in credentials are invalid"}), 401
         request.demo_email = email
         return view_func(*args, **kwargs)
 
@@ -236,7 +236,7 @@ def create_demo_session():
     try:
         spreadsheet_id, warning = record_data.create_demo_record(request.demo_email)
     except Exception as e:
-        return jsonify({"error": f"建立 Demo 場次檔案時發生錯誤:{str(e)}"}), 500
+        return jsonify({"error": f"Error creating the demo session file: {str(e)}"}), 500
 
     result = {"spreadsheet_id": spreadsheet_id}
     if warning:
@@ -267,16 +267,21 @@ def demo_round_status():
     spreadsheet_id = request.args.get("spreadsheet_id")
 
     if not day or not type_:
-        return jsonify({"error": "缺少必要參數 day 或 type"}), 400
+        return jsonify({"error": "Missing required parameter: day or type"}), 400
 
     try:
         result = parse_data.build_round_response(
             day, type_, spreadsheet_id, character_slugs=parse_data.DEMO_CHARACTER_SLUGS
         )
     except ValueError as e:
+        # 這裡的錯誤訊息來自 parse_data.build_round_response,跟正式版 /round
+        # 共用同一支函式、同一套中文錯誤文字——刻意不在這裡覆寫成英文,
+        # 因為前端的 ROUND_OPTIONS 只會送合法的 day/type 組合,正常使用路徑
+        # 根本不會觸發到這支 ValueError,強行翻譯反而要改到正式版也共用的
+        # 字串,不值得為一個使用者碰不到的分支冒這個風險。
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        return jsonify({"error": f"讀取資料時發生錯誤:{str(e)}"}), 500
+        return jsonify({"error": f"Error loading data: {str(e)}"}), 500
 
     return jsonify(result), 200
 
